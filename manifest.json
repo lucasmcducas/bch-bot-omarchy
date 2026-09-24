@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.lucasmcducas.bch-wallet",
+  "name": "BCH Wallet",
+  "version": "0.1.0",
+  "author": "Luke McDucas (via Jav)",
+  "license": "MIT",
+  "description": "Self-custodial Bitcoin Cash (BCH) wallet in your Omarchy bar — balance, recent activity, and one-shot send/receive commands. First spendable crypto plugin in the marketplace.",
+  "kinds": ["bar-widget", "command"],
+  "activation": "on-demand",
+  "entryPoints": {
+    "barWidget": "BchBalanceWidget.qml",
+    "command": "BchCommand.qml"
+  },
+  "barWidget": {
+    "displayName": "BCH Balance",
+    "description": "Live BCH balance + recent activity, with send/receive hotkeys.",
+    "category": "Productivity",
+    "aliases": ["bch", "bitcoin-cash", "wallet"],
+    "allowMultiple": false,
+    "defaults": {
+      "treasuryAddress": "bitcoincash:qpjfw956u6rc88n8ul4xxyu9fu2v94s2eylh9vtzhv",
+      "treasuryBps": 50,
+      "refreshIntervalSec": 60,
+      "showFiatEquivalent": false
+    },
+    "schema": [
+      {
+        "key": "treasuryAddress",
+        "type": "string",
+        "label": "Treasury address (receives the 0.5% per-tx fee)",
+        "defaultValue": "bitcoincash:qpjfw956u6rc88n8ul4xxyu9fu2v94s2eylh9vtzhv",
+        "description": "Set to your own address to receive the fee, or to an empty string to disable fees entirely (self-hosted)."
+      },
+      {
+        "key": "treasuryBps",
+        "type": "integer",
+        "label": "Treasury fee (basis points; 50 = 0.5%)",
+        "min": 0,
+        "max": 1000,
+        "step": 1,
+        "defaultValue": 50
+      },
+      {
+        "key": "refreshIntervalSec",
+        "type": "integer",
+        "label": "Balance refresh interval (seconds)",
+        "min": 10,
+        "max": 3600,
+        "step": 10,
+        "defaultValue": 60
+      },
+      {
+        "key": "showFiatEquivalent",
+        "type": "boolean",
+        "label": "Show USD equivalent",
+        "defaultValue": false
+      }
+    ]
+  }
+}
