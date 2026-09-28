@@ -46,8 +46,8 @@ The marketplace baseline is a **deterministic, snapshot-based, narrow check** th
 ## Reporting security concerns
 
 Please report suspected security issues via:
-- **GitHub security advisory** at `github.com/lucasmcducas/bch-wallet-omarchy/security/advisories/new` (private)
-- Or via the upstream `bch-bot` repo at `github.com/lucasmcducas/bch-bot/security/advisories/new`
+- **GitHub security advisory** at `github.com/lucasmcducas/bch-bot-omarchy/security/advisories/new` (private)
+- Or via the upstream `bch-bot` repo at `github.com/lucasmcducas/bch-bot-public/security/advisories/new`
 - Or via the Omarchy marketplace's private report form at `github.com/omacom/omarchy-plugin-marketplace/security/advisories/new`
 
 Do not disclose suspected issues in public issues.

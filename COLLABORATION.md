@@ -11,7 +11,7 @@ Three repos exist with the building blocks for collaborative work:
 
 | Repo | Path | What it has |
 |---|---|---|
-| **bch-bot** | `github.com/lucasmcducas/bch-bot` | Working BCH wallet — Node.js + libauth, 216 passing tests, treasury fee wired in, encrypted at rest, on `bch-bot/phase-1` branch |
+| **bch-bot** | `github.com/lucasmcducas/bch-bot-public` | Working BCH wallet — Node.js + libauth, 216 passing tests, treasury fee wired in, encrypted at rest, on `bch-bot/phase-1` branch |
 | **bch-bot-omarchy-plugin** | `github.com/lucasmcducas/bch-bot-omarchy` (local-only, **not pushed yet**) | Initial Omarchy plugin scaffold — manifest, bar widget, IPC command, README, LICENSE, SECURITY.md. Branch: `main`. Head: `20ea2c9` |
 | **memory-bch-wiki** | `github.com/lucasmcducas/ai-workspace-backup` | Knowledge base — Omarchy distro + marketplace entity docs, security KB (4 docs) on `security/kb-init` branch, monetization synthesis, capital accumulation strategy |
 
@@ -207,4 +207,4 @@ Each is independently reversible. I'll wait for your go on the first before doin
 
 ## 10. Appendix: One-paragraph pitch for community members
 
-> We're building the first spendable crypto plugin for the Omarchy Plugin Marketplace — a self-custodial Bitcoin Cash (BCH) wallet in your Omarchy bar. The wallet code (`bch-bot`) is at `github.com/lucasmcducas/bch-bot` (Node.js, 216 tests passing). The plugin scaffold is at `github.com/lucasmcducas/bch-bot-omarchy`. We need community help on 5 scoped work units (wire balance display, send modal with fee disclosure, QR generator, preview screenshot, marketplace submission). Each unit is one issue = one PR. Fork the repo, point your LLM at this plan + the wiki entities, review the diff, open the PR. Maintainers (Luke + Jav) review + merge. Per-tx 0.5% treasury fee (configurable, user-visible, transparently disclosed in the manifest). MIT-licensed, no vendor lock-in.
+> We're building the first spendable crypto plugin for the Omarchy Plugin Marketplace — a self-custodial Bitcoin Cash (BCH) wallet in your Omarchy bar. The wallet code (`bch-bot`) is at `github.com/lucasmcducas/bch-bot-public` (Node.js, 216 tests passing). The plugin scaffold is at `github.com/lucasmcducas/bch-bot-omarchy`. We need community help on 5 scoped work units (wire balance display, send modal with fee disclosure, QR generator, preview screenshot, marketplace submission). Each unit is one issue = one PR. Fork the repo, point your LLM at this plan + the wiki entities, review the diff, open the PR. Maintainers (Luke + Jav) review + merge. Per-tx 0.5% treasury fee (configurable, user-visible, transparently disclosed in the manifest). MIT-licensed, no vendor lock-in.

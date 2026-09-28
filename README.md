@@ -66,7 +66,7 @@ npm link                                    # makes 'bch-bot' available globally
 
 **Option C — local install for development**
 ```bash
-git clone https://github.com/lucasmcducas/bch-bot.git ~/bch-bot
+git clone https://github.com/lucasmcducas/bch-bot-public.git ~/bch-bot
 cd ~/bch-bot && npm ci
 echo 'export PATH="$HOME/bch-bot/bin:$PATH"' >> ~/.bashrc
 ```
@@ -153,7 +153,7 @@ This plugin:
 - Does **not** modify user configuration outside its own scope.
 - Has **no** install/uninstall scripts in the marketplace sense — the shell handles git clone into the plugins dir.
 
-The plugin's security posture relies on the bch-bot CLI's security. See [bch-bot/SECURITY.md](https://github.com/lucasmcducas/bch-bot/blob/main/SECURITY.md) for the upstream threat model.
+The plugin's security posture relies on the bch-bot CLI's security. See [bch-bot/SECURITY.md](https://github.com/lucasmcducas/bch-bot-public/blob/main/SECURITY.md) for the upstream threat model.
 
 ### Treasury fee disclosure
 
@@ -169,7 +169,7 @@ The treasury address is **not** hardcoded in the public plugin. Users who want t
 
 | Dependency | Why | Source |
 |---|---|---|
-| `bch-bot` CLI | Wallet logic | `github.com/lucasmcducas/bch-bot` |
+| `bch-bot` CLI | Wallet logic | `github.com/lucasmcducas/bch-bot-public` |
 | Node.js >= 22 | Runtime for bch-bot | nodejs.org |
 | libauth 3.0.0 | BCH signing primitives (transitively) | bitcoincashjs/libauth |
 | @cashlab/* | Cauldron AMM integration (transitively) | cashlab npm |

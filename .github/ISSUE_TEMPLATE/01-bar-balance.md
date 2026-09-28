@@ -40,7 +40,7 @@ The `bch-bot` CLI emits JSON like:
 ## Resources
 
 - [Quickshell.Io docs](https://quickshell.org/docs/types/Io/)
-- `bch-bot` repo: https://github.com/lucasmcducas/bch-bot
+- `bch-bot` repo: https://github.com/lucasmcducas/bch-bot-public
 - Wiki: https://github.com/lucasmcducas/bch-wiki-public
 
 ## Workflow

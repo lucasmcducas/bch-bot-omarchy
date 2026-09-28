@@ -32,7 +32,7 @@ The `bch-bot` CLI's `address` command prints the current receiving address. The 
 ## Resources
 
 - Issue #1 (depends on this)
-- `bch-bot` repo: https://github.com/lucasmcducas/bch-bot
+- `bch-bot` repo: https://github.com/lucasmcducas/bch-bot-public
 - Wiki: https://github.com/lucasmcducas/bch-wiki-public
 
 ## Workflow

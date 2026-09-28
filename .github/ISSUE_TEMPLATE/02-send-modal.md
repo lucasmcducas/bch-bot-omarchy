@@ -36,7 +36,7 @@ The `bch-bot` CLI's `send` command supports a dry-run mode (default) that return
 ## Resources
 
 - Issue #1 (depends on this; do that first)
-- `bch-bot` repo: https://github.com/lucasmcducas/bch-bot
+- `bch-bot` repo: https://github.com/lucasmcducas/bch-bot-public
 - Wiki: https://github.com/lucasmcducas/bch-wiki-public
 
 ## Workflow
