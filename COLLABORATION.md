@@ -18,7 +18,7 @@ Three repos exist with the building blocks for collaborative work:
 **Wiki pages most relevant for collaborators:**
 - `entities/omarchy.md` — what Omarchy is
 - `entities/omarchy-plugin-marketplace.md` — verified manifest schema, submission workflow, security baseline
-- `syntheses/bch-bot-omarchy-monetization-plan.md` — per-tx fee model, three-track rollout, revenue projections
+- `syntheses/bch-bot-omarchy-monetization-plan.md` — per-tx fee model, three-track rollout (kept private — see COLLABORATION.md §"What's not public")
 - `security/script-and-signing.md`, `utxo-and-mempool.md`, `wallet-threat-model.md`, `cashtokens.md` — security KB
 
 ---
