@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "author": "Luke McDucas (via Jav)",
   "license": "MIT",
-  "description": "Self-custodial Bitcoin Cash (BCH) wallet in your Omarchy bar — balance, recent activity, and one-shot send/receive commands. First spendable crypto plugin in the marketplace.",
+  "description": "Self-custodial Bitcoin Cash (BCH) wallet in your Omarchy bar — balance, recent activity, and one-shot send/receive commands.",
   "kinds": ["bar-widget", "command"],
   "activation": "on-demand",
   "entryPoints": {
@@ -19,28 +19,10 @@
     "aliases": ["bch", "bitcoin-cash", "wallet"],
     "allowMultiple": false,
     "defaults": {
-      "treasuryAddress": "",
-      "treasuryBps": 50,
       "refreshIntervalSec": 60,
       "showFiatEquivalent": false
     },
     "schema": [
-      {
-        "key": "treasuryAddress",
-        "type": "string",
-        "label": "Treasury address (receives the per-tx fee; leave empty to disable fees)",
-        "defaultValue": "",
-        "description": "Set to your own BCH address to receive the fee, or leave empty to disable fees entirely (self-hosted)."
-      },
-      {
-        "key": "treasuryBps",
-        "type": "integer",
-        "label": "Treasury fee (basis points; 50 = 0.5%)",
-        "min": 0,
-        "max": 1000,
-        "step": 1,
-        "defaultValue": 50
-      },
       {
         "key": "refreshIntervalSec",
         "type": "integer",

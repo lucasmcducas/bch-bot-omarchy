@@ -9,7 +9,6 @@ A self-custodial Bitcoin Cash (BCH) wallet in your Omarchy bar widget. **The fir
 - **Self-custodial** — you hold your own keys; no accounts, no KYC, no OAuth
 - **CashTokens-aware** — sees FT and NFT holdings alongside BCH
 - **Cauldron AMM integration** — quote swaps without leaving the shell
-- **0.5% treasury fee** — per-tx, visible in the send confirmation, set to your own address or 0 if you self-host
 
 ## Installation
 
@@ -154,16 +153,6 @@ This plugin:
 - Has **no** install/uninstall scripts in the marketplace sense — the shell handles git clone into the plugins dir.
 
 The plugin's security posture relies on the bch-bot CLI's security. See [bch-bot/SECURITY.md](https://github.com/lucasmcducas/bch-bot-public/blob/main/SECURITY.md) for the upstream threat model.
-
-### Treasury fee disclosure
-
-The per-tx fee (default 0.5%, configurable 0-1000 bps in plugin settings) is added as a separate output to every transaction. The fee:
-- Is **visible** in the send confirmation modal before broadcast
-- Is **disabled** when `treasuryAddress` is empty or `treasuryBps` is 0
-- Can be **redirected** to your own BCH address (for forks / self-hosters)
-- Defaults to **disabled** (`treasuryAddress: ""`) so the plugin ships with no built-in fee routing — users must opt in by setting their own address
-
-The treasury address is **not** hardcoded in the public plugin. Users who want to support the maintainer can opt in via the plugin settings.
 
 ## External dependencies
 

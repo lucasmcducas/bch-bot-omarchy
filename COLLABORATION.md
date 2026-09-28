@@ -11,14 +11,13 @@ Three repos exist with the building blocks for collaborative work:
 
 | Repo | Path | What it has |
 |---|---|---|
-| **bch-bot** | `github.com/lucasmcducas/bch-bot-public` | Working BCH wallet — Node.js + libauth, 216 passing tests, treasury fee wired in, encrypted at rest, on `bch-bot/phase-1` branch |
+| **bch-bot** | `github.com/lucasmcducas/bch-bot-public` | Working BCH wallet — Node.js + libauth, 216 passing tests, encrypted at rest, on `bch-bot-public` master branch |
 | **bch-bot-omarchy-plugin** | `github.com/lucasmcducas/bch-bot-omarchy` (local-only, **not pushed yet**) | Initial Omarchy plugin scaffold — manifest, bar widget, IPC command, README, LICENSE, SECURITY.md. Branch: `main`. Head: `20ea2c9` |
-| **memory-bch-wiki** | `github.com/lucasmcducas/ai-workspace-backup` | Knowledge base — Omarchy distro + marketplace entity docs, security KB (4 docs) on `security/kb-init` branch, monetization synthesis, capital accumulation strategy |
+| **memory-bch-wiki** | `github.com/lucasmcducas/ai-workspace-backup` | Knowledge base — Omarchy distro + marketplace entity docs, security KB (4 docs) on `security/kb-init` branch, capital accumulation strategy |
 
 **Wiki pages most relevant for collaborators:**
 - `entities/omarchy.md` — what Omarchy is
 - `entities/omarchy-plugin-marketplace.md` — verified manifest schema, submission workflow, security baseline
-- `syntheses/bch-bot-omarchy-monetization-plan.md` — per-tx fee model, three-track rollout (kept private — see COLLABORATION.md §"What's not public")
 - `security/script-and-signing.md`, `utxo-and-mempool.md`, `wallet-threat-model.md`, `cashtokens.md` — security KB
 
 ---
@@ -97,7 +96,7 @@ Each issue is a self-contained, estimable unit that one LLM agent can finish in 
 | # | Issue title | What it delivers | Acceptance criteria |
 |---|---|---|---|
 | **#1** | Wire `bch-bot balance` into the bar widget | Real Quickshell `Process` call → JSON parse → balance display in `BchBalanceWidget.qml` | Bar shows live BCH balance updating every 60s; no network code in QML |
-| **#2** | Send modal with treasury fee disclosure | Click bar icon → modal shows recipient, amount, treasury fee, network fee, total; confirm button calls `bch-bot send` | Fee line is visible; confirmation gates on `BCH_CONFIRM=yes` |
+| **#2** | Send modal with fee breakdown | Click bar icon → modal shows recipient, amount, network fee, total; confirm button calls `bch-bot send` | Confirmation gates on `BCH_CONFIRM=yes` |
 | **#3** | QR code generator for receive | `omarchy bch-wallet receive` shows QR for the wallet's current receiving address | QR encodes the address; works in shell command output |
 | **#4** | preview.png + marketplace submission prep | Screenshot of the bar widget, cropped to 1200x630, pushed to repo | File exists at repo root, ≤50MB |
 | **#5** | Submit the marketplace listing | Open the GitHub issue at `omacom/omarchy-plugin-marketplace` with the proper body | Issue opened with all 5 checklist items confirmed |
@@ -142,7 +141,7 @@ git push origin feature/1-balance-display
 2. **Manifest schema** is `schemaVersion: 1` with `kinds`, `entryPoints`, optional kind-specific config block.
 3. **Security baseline** blocks `curl|sh`, unpinned git exec, passwordless sudoers, bundled binaries, dangerous `/tmp` use. The plugin does none of these — but the LLM should not introduce any.
 4. **Quickshell API** for IPC: `Quickshell.Io.Process` for spawning the CLI; `Quickshell.Io.IpcHandler` for receiving commands. The QML needs testing in a real Omarchy install to verify.
-5. **Treasury fee** is `treasuryBps = 50` (0.5%) by default; visible to the user; configurable to 0 or another address.
+5. No built-in fee. Send confirmation shows network fee only.
 6. **No write access outside plugin scope** — do not modify `~/.config/omarchy/` outside the plugin's own settings.
 7. **Test before PR** — `node scripts/test-*.mjs` style tests are encouraged for any logic the QML defers to.
 
@@ -169,7 +168,7 @@ The BCH wiki (`memory-bch-wiki` on the `security/kb-init` branch) is what every 
 | LLM introduces a security baseline violation | Medium | Maintainer review with the baseline checklist; CI lint that greps for `curl|sh` patterns |
 | LLM leaks a wallet private key in a PR | Low | The plugin repo has no wallet. The bch-bot repo has the wallet code; tests use ephemeral keys. Document this. |
 | Marketplace rejection after submission | Medium | Read SUBMISSION.md + SECURITY.md carefully before submitting; preview the issue body before opening it |
-| Contributor diverges from the per-tx fee model | Medium | This plan locks the model: 0.5% flat, treasury address in plain sight, user-overridable. PRs that change this need explicit maintainer approval |
+| Contributor adds a hidden fee or third-party destination | Medium | No fee of any kind in the public plugin. PRs that add one need explicit maintainer approval |
 
 ---
 
@@ -207,4 +206,4 @@ Each is independently reversible. I'll wait for your go on the first before doin
 
 ## 10. Appendix: One-paragraph pitch for community members
 
-> We're building the first spendable crypto plugin for the Omarchy Plugin Marketplace — a self-custodial Bitcoin Cash (BCH) wallet in your Omarchy bar. The wallet code (`bch-bot`) is at `github.com/lucasmcducas/bch-bot-public` (Node.js, 216 tests passing). The plugin scaffold is at `github.com/lucasmcducas/bch-bot-omarchy`. We need community help on 5 scoped work units (wire balance display, send modal with fee disclosure, QR generator, preview screenshot, marketplace submission). Each unit is one issue = one PR. Fork the repo, point your LLM at this plan + the wiki entities, review the diff, open the PR. Maintainers (Luke + Jav) review + merge. Per-tx 0.5% treasury fee (configurable, user-visible, transparently disclosed in the manifest). MIT-licensed, no vendor lock-in.
+> We're building the first spendable crypto plugin for the Omarchy Plugin Marketplace — a self-custodial Bitcoin Cash (BCH) wallet in your Omarchy bar. The wallet code (`bch-bot`) is at `github.com/lucasmcducas/bch-bot-public` (Node.js, 216 tests passing). The plugin scaffold is at `github.com/lucasmcducas/bch-bot-omarchy`. We need community help on 5 scoped work units (wire balance display, send modal with fee disclosure, QR generator, preview screenshot, marketplace submission). Each unit is one issue = one PR. Fork the repo, point your LLM at this plan + the wiki entities, review the diff, open the PR. Maintainers (Luke + Jav) review + merge. MIT-licensed, no vendor lock-in.

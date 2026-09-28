@@ -37,12 +37,6 @@ The marketplace baseline is a **deterministic, snapshot-based, narrow check** th
 - **No file modifications outside plugin scope** — the plugin does not modify `~/.config/omarchy/` outside its own settings schema (managed by the shell).
 - **No write access to user documents** — only reads the wallet dir (`~/.bch-wallet/` by default, configurable via `BCH_WALLET_DIR`).
 
-## Treasury fee — what the plugin does NOT do
-
-- The treasury address is **public and editable** in the plugin settings. Users can set it to their own address, or set `treasuryBps = 0` to disable the fee entirely. The fee is not obfuscated; the default address is in `manifest.json` and `README.md`.
-- The fee is **one extra transaction output**. It is **visible** in the send confirmation UI before broadcast.
-- The plugin does **not** broadcast transactions without explicit user confirmation via the `BCH_CONFIRM=yes` environment gate in `bch-bot send`.
-
 ## Reporting security concerns
 
 Please report suspected security issues via:
@@ -54,6 +48,5 @@ Do not disclose suspected issues in public issues.
 
 ## Known limitations
 
-- The plugin depends on the user having `bch-bot` installed. If the CLI is missing, the plugin's bar widget will show "loading..." indefinitely. The plugin does not auto-install the CLI (this would require install scripts, which the marketplace security baseline discourages).
-- The treasury fee defaults to a specific BCH address. Self-hosters should override it.
+- The plugin depends on the user having `bch-bot` installed. If the CLI is missing, the plugin's bar widget will show a red icon with install instructions. The plugin does not auto-install the CLI (this would require install scripts, which the marketplace security baseline discourages).
 - The plugin has not yet been audited. The bch-bot core has been verified via 216+ unit tests including round-trip encryption tests.

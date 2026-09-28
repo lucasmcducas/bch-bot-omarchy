@@ -19,8 +19,6 @@ import Quickshell.Io
 
 Scope {
   id: root
-  property string treasuryAddress: ""
-  property int treasuryBps: 50
   property int refreshIntervalSec: 60
   property bool showFiatEquivalent: false
 

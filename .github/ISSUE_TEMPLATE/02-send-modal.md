@@ -1,24 +1,23 @@
-name: Issue #2 — Send modal with treasury fee disclosure
-description: Click bar icon → modal shows recipient, amount, fee, total; confirm button calls bch-bot send.
+name: Issue #2 — Send modal with fee breakdown
+description: Click bar icon → modal shows recipient, amount, network fee, total; confirm button calls bch-bot send.
 labels: ["good first issue", "help wanted"]
 assignees: []
 ---
 
-# Send modal with treasury fee disclosure
+# Send modal with fee breakdown
 
 ## Goal
 
 Clicking the bar widget opens a modal where the user can:
 1. Enter a recipient address + amount
-2. See the treasury fee, network fee, and total
+2. See the network fee and total
 3. Confirm (which calls `bch-bot send` with `BCH_CONFIRM=yes`)
 
 ## Acceptance criteria
 
 - [ ] Modal opens on bar widget click
 - [ ] Fields: recipient address, amount (sats)
-- [ ] Display row: amount, treasury fee (if enabled), network fee, total — all in sats
-- [ ] Treasury fee line is visible (or "fee disabled" if `treasuryAddress` is empty)
+- [ ] Display row: amount, network fee, total — all in sats
 - [ ] Confirm button calls `bch-bot send <addr> <amount>` via Quickshell.Io.Process with `BCH_CONFIRM=yes`
 - [ ] On success: close modal, show txid in a toast
 - [ ] On failure: show error message in the modal (don't close)

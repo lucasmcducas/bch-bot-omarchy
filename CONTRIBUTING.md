@@ -46,7 +46,7 @@ gh pr create \
 
 Every PR must:
 
-1. **Pass `audit-public.sh`** — no treasury addresses, no mainnet wallet paths, no specific dollar figures.
+1. **Pass `audit-public.sh`** — no mainnet wallet paths, no specific dollar figures, no third-party destinations.
 2. **Reference an issue** — open or closed. PRs without a linked issue get rejected.
 3. **Have a clear title** — `[Plugin]: <one-line summary>` (matches the issue template).
 4. **Have tested the change** — either with `npm test` (if JS changes) or by running in Omarchy 4.0 with a screenshot.
