@@ -1,6 +1,6 @@
 # BCH Wallet — Omarchy Plugin
 
-A self-custodial Bitcoin Cash (BCH) wallet in your Omarchy bar widget. **The first spendable crypto plugin in the Omarchy marketplace.**
+A self-custodial Bitcoin Cash (BCH) wallet in your Omarchy bar widget.
 
 ## What it does
 
@@ -18,12 +18,12 @@ This plugin depends on two things:
 
 ### One-command install (Arch / Omarchy)
 
-If both packages are available in their respective repos:
-
 ```bash
-yay -S bch-bot                              # AUR: wallet CLI
-omarchy plugin install bch-wallet           # Omarchy marketplace: plugin UI
+yay -S bch-bot                                          # AUR: wallet CLI
+omarchy plugin add https://github.com/lucasmcducas/bch-bot-omarchy.git --enable
 ```
+
+(`omarchy plugin install` is an alias for `omarchy plugin add`.)
 
 That's it — two commands. The plugin detects the wallet on startup and shows your BCH balance in the bar.
 
@@ -34,10 +34,18 @@ That's it — two commands. The plugin detects the wallet on startup and shows y
 git clone https://github.com/lucasmcducas/bch-bot-public.git
 cd bch-bot-public
 npm ci
-npm link                                    # makes 'bch-bot' available globally
+npm link                                                # makes 'bch-bot' available globally
 
-# 2. Install the plugin
-omarchy plugin install bch-wallet
+# 2. Add the plugin (clone + validate + enable in one step)
+omarchy plugin add https://github.com/lucasmcducas/bch-bot-omarchy.git --enable
+```
+
+Or, for testing, install without `--enable` and validate manually:
+
+```bash
+omarchy plugin clone https://github.com/lucasmcducas/bch-bot-omarchy.git
+omarchy plugin validate ~/.config/omarchy/plugins/io.github.lucasmcducas.bch-wallet
+omarchy plugin enable io.github.lucasmcducas.bch-wallet --section right
 ```
 
 ### What you should see
@@ -45,6 +53,17 @@ omarchy plugin install bch-wallet
 - After both installs: green "Ƀ 0.00858627" in the bar (your balance)
 - If only the plugin is installed: red "Ƀ ✗" with hover tooltip: *"Install bch-bot CLI: yay -S bch-bot"*
 - Click the red icon to see the install command.
+
+### QML validation
+
+Before publishing or submitting to the marketplace, lint your QML:
+
+```bash
+qmllint BchBalanceWidget.qml
+qmllint BchCommand.qml
+```
+
+`qmllint` ships with `qtdeclarative5-dev-tools` (Arch) or equivalent on other distros.
 
 ### Step 1: Install the bch-bot CLI (do this first)
 
@@ -60,7 +79,7 @@ yay -S bch-bot
 git clone https://github.com/lucasmcducas/bch-bot-public.git
 cd bch-bot-public
 npm ci
-npm link                                    # makes 'bch-bot' available globally
+npm link                                                # makes 'bch-bot' available globally
 ```
 
 **Option C — local install for development**
@@ -70,24 +89,36 @@ cd ~/bch-bot && npm ci
 echo 'export PATH="$HOME/bch-bot/bin:$PATH"' >> ~/.bashrc
 ```
 
-### Step 2: Install the plugin
+### Step 2: Add the plugin
 
-After the wallet CLI is on your `$PATH`, install the plugin via the Omarchy marketplace:
+After the wallet CLI is on your `$PATH`, add the plugin via the Omarchy shell:
 
 ```bash
-omarchy plugin install bch-wallet
+omarchy plugin add https://github.com/lucasmcducas/bch-bot-omarchy.git --enable
 ```
 
-The Omarchy shell:
-- Pulls the plugin from https://github.com/lucasmcducas/bch-bot-omarchy
-- Reads the manifest
-- Registers the bar widget
+The shell:
+- Clones the repo into `~/.config/omarchy/plugins/io.github.lucasmcducas.bch-wallet/`
+- Reads the manifest at the root
+- Validates the manifest against the schema (schemaVersion, kinds, entryPoints)
+- Enables the plugin (the `--enable` flag) and prompts for bar section placement
 
-To install from source directly (for testing):
+To clone without enabling (for testing or reviewing first):
 
 ```bash
-git clone https://github.com/lucasmcducas/bch-bot-omarchy.git \
-  ~/.config/omarchy/plugins/bch-wallet
+omarchy plugin clone https://github.com/lucasmcducas/bch-bot-omarchy.git
+```
+
+To validate manually:
+
+```bash
+omarchy plugin validate ~/.config/omarchy/plugins/io.github.lucasmcducas.bch-wallet
+```
+
+To enable after manual review:
+
+```bash
+omarchy plugin enable io.github.lucasmcducas.bch-wallet --section right
 ```
 
 ### Step 3: Restart Omarchy (or reload the shell)
@@ -101,7 +132,8 @@ You should see:
 ## Removal
 
 ```bash
-omarchy plugin remove bch-wallet
+omarchy plugin disable io.github.lucasmcducas.bch-wallet
+omarchy plugin remove io.github.lucasmcducas.bch-wallet
 # optionally clean up wallet
 rm -rf ~/.bch-wallet
 ```
@@ -121,16 +153,6 @@ The plugin does not modify any user configuration outside its own scope. The wal
    ```
 3. Re-export the passphrase in your shell rc, or store it in a keyring (the plugin does NOT store it — the wallet refuses to load without it).
 
-## Removal
-
-```bash
-omarchy plugin remove bch-wallet
-# optionally clean up wallet
-rm -rf ~/.bch-wallet
-```
-
-The plugin does not modify any user configuration outside its own scope. The wallet directory (`BCH_WALLET_DIR`, default `~/.bch-wallet`) and the settings schema are not touched by the plugin.
-
 ## Subcommands
 
 | Command | Description |
@@ -143,6 +165,37 @@ The plugin does not modify any user configuration outside its own scope. The wal
 | `omarchy bch-wallet sweep` | Consolidate dust UTXOs |
 | `omarchy bch-wallet stake` | Stake PUSD (if any) |
 | `omarchy bch-wallet swap <supply> <demand> <amount>` | Quote a Cauldron swap |
+
+## Plugin manifest schema
+
+Plugins are git repos with a `manifest.json` at the root. The shell clones them into `~/.config/omarchy/plugins/<manifest-id>/` and validates against this schema:
+
+```json
+{
+  "schemaVersion": 1,                    // only 1 supported
+  "id": "io.github.<yourname>.<plugin>",  // namespaced, lowercase, no 'omarchy.*' reserved
+  "name": "...",
+  "version": "0.1.0",
+  "author": "...",
+  "license": "MIT",
+  "description": "...",
+  "kinds": ["bar-widget", "command"],
+  "entryPoints": {
+    "barWidget": "BchBalanceWidget.qml",
+    "command": "BchCommand.qml"
+  },
+  "barWidget": {
+    "displayName": "...",
+    "description": "...",
+    "category": "Productivity",
+    "aliases": ["..."],
+    "defaults": { ... },
+    "schema": [ ... ]
+  }
+}
+```
+
+Required fields: `schemaVersion`, `id`, `name`, `version`, `kinds`, `entryPoints`. Run `omarchy plugin validate <path>` to check your manifest before publishing.
 
 ## Security
 
