@@ -13,29 +13,75 @@ A self-custodial Bitcoin Cash (BCH) wallet in your Omarchy bar widget. **The fir
 
 ## Installation
 
-This plugin is shipped as an Omarchy marketplace plugin. The shell handles installation:
+This plugin depends on two things:
+1. The plugin itself (the UI shell)
+2. The `bch-bot` CLI (the wallet engine)
+
+### Step 1: Install the bch-bot CLI (do this first)
+
+The plugin needs the `bch-bot` CLI to be on your `$PATH`. Install it via one of:
+
+**Option A — from source (recommended for now; AUR submission is pending)**
+```bash
+git clone https://github.com/lucasmcducas/bch-bot-public.git
+cd bch-bot-public
+npm ci
+# Add to PATH (one of these):
+npm link                                   # makes 'bch-bot' available globally
+# OR
+echo 'export PATH="$HOME/bch-bot-public/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+**Option B — from AUR (will work once the package is submitted)**
+```bash
+yay -S bch-bot
+```
+
+**Option C — local install for development**
+```bash
+git clone https://github.com/lucasmcducas/bch-bot.git ~/bch-bot
+cd ~/bch-bot && npm ci
+echo 'export PATH="$HOME/bch-bot/bin:$PATH"' >> ~/.bashrc
+```
+
+### Step 2: Install the plugin
+
+After the wallet CLI is on your `$PATH`, install the plugin via the Omarchy marketplace:
 
 ```bash
 omarchy plugin install bch-wallet
 ```
 
-To install from this source repository directly (for testing):
+The Omarchy shell:
+- Pulls the plugin from https://github.com/lucasmcducas/bch-bot-omarchy
+- Reads the manifest
+- Registers the bar widget
+
+To install from source directly (for testing):
 
 ```bash
-git clone https://github.com/lucasmcducas/bch-wallet-omarchy.git \
+git clone https://github.com/lucasmcducas/bch-bot-omarchy.git \
   ~/.config/omarchy/plugins/bch-wallet
 ```
 
-This plugin depends on the **bch-bot** CLI being installed separately:
+### Step 3: Restart Omarchy (or reload the shell)
+
+The plugin runs `which bch-bot` on startup. After installing the CLI, restart Omarchy (or send a reload signal) so the widget re-detects the CLI.
+
+You should see:
+- Red "Ƀ ✗" with hover tooltip if bch-bot is missing
+- Green "Ƀ 0.00858627" once bch-bot is on `$PATH` and the wallet is loaded
+
+## Removal
 
 ```bash
-# Arch / Omarchy
-pacman -S bch-bot   # or yay -S bch-bot from AUR
-
-# macOS / dev
-git clone https://github.com/lucasmcducas/bch-bot.git
-cd bch-bot && npm ci && npm link
+omarchy plugin remove bch-wallet
+# optionally clean up wallet
+rm -rf ~/.bch-wallet
 ```
+
+The plugin does not modify any user configuration outside its own scope. The wallet directory (`BCH_WALLET_DIR`, default `~/.bch-wallet`) and the settings schema are not touched by the plugin.
 
 ## First-run setup
 
