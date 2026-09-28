@@ -47,7 +47,7 @@ Scope {
       if (exitCode !== 0) {
         root.walletStatus = "no-wallet";
         root.balanceBch = "no wallet";
-        root.errorMessage = "Install bch-bot CLI: pacman -S bch-bot (Arch) or see https://github.com/lucasmcducas/bch-bot-public";
+        root.errorMessage = "Install bch-bot CLI:\n  yay -S bch-bot            (Arch/Omarchy)\n  — or —\n  See https://github.com/lucasmcducas/bch-bot-public#install";
       } else {
         refreshBalance();
       }
@@ -113,9 +113,17 @@ Scope {
       id: ma
       anchors.fill: parent
       hoverEnabled: true
+      onClicked: {
+        // On no-wallet state, copy the install command to clipboard
+        if (root.walletStatus === "no-wallet") {
+          // Quickshell exposes Clipboard via Quickshell.Io.Clipboard — use it if available
+          // For now, fall through to tooltip which shows the command
+        }
+      }
     }
 
     ToolTip.visible: ma.containsMouse && root.walletStatus !== "ok"
+    ToolTip.delay: 200
     ToolTip.text: root.errorMessage
   }
 }

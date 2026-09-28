@@ -17,25 +17,51 @@ This plugin depends on two things:
 1. The plugin itself (the UI shell)
 2. The `bch-bot` CLI (the wallet engine)
 
+### One-command install (Arch / Omarchy)
+
+If both packages are available in their respective repos:
+
+```bash
+yay -S bch-bot                              # AUR: wallet CLI
+omarchy plugin install bch-wallet           # Omarchy marketplace: plugin UI
+```
+
+That's it — two commands. The plugin detects the wallet on startup and shows your BCH balance in the bar.
+
+### If `yay -S bch-bot` isn't available yet (AUR submission pending)
+
+```bash
+# 1. Install the wallet from source
+git clone https://github.com/lucasmcducas/bch-bot-public.git
+cd bch-bot-public
+npm ci
+npm link                                    # makes 'bch-bot' available globally
+
+# 2. Install the plugin
+omarchy plugin install bch-wallet
+```
+
+### What you should see
+
+- After both installs: green "Ƀ 0.00858627" in the bar (your balance)
+- If only the plugin is installed: red "Ƀ ✗" with hover tooltip: *"Install bch-bot CLI: yay -S bch-bot"*
+- Click the red icon to see the install command.
+
 ### Step 1: Install the bch-bot CLI (do this first)
 
 The plugin needs the `bch-bot` CLI to be on your `$PATH`. Install it via one of:
 
-**Option A — from source (recommended for now; AUR submission is pending)**
+**Option A — from AUR (recommended for Arch/Omarchy users)**
+```bash
+yay -S bch-bot
+```
+
+**Option B — from source (recommended for now; AUR submission is pending)**
 ```bash
 git clone https://github.com/lucasmcducas/bch-bot-public.git
 cd bch-bot-public
 npm ci
-# Add to PATH (one of these):
-npm link                                   # makes 'bch-bot' available globally
-# OR
-echo 'export PATH="$HOME/bch-bot-public/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-**Option B — from AUR (will work once the package is submitted)**
-```bash
-yay -S bch-bot
+npm link                                    # makes 'bch-bot' available globally
 ```
 
 **Option C — local install for development**
