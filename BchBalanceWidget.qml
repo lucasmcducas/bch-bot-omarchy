@@ -3,22 +3,20 @@
 // Pattern verified against github.com/omacom/omarchy/tree/main/shell/plugins/agents/Panel.qml
 // (the closest reference: a bar-widget with settings schema).
 //
+// States:
+//   - "loading"     : startup, before first refresh
+//   - "ok"          : balance successfully fetched
+//   - "no-wallet"   : bch-bot CLI not found in PATH; show install instructions
+//   - "error"       : CLI ran but failed; show error message
+//
 // Renders a small bar icon with the BCH balance; click to open a panel
 // with the full wallet UI (balance, recent activity, send/receive buttons).
-//
-// IMPORTANT QML constraints:
-//   - No network access from QML directly. The widget calls the CLI via
-//     Quickshell's IpcProvider / IpcHandler pattern.
-//   - No persistent local state. Settings live in the plugin's settings
-//     schema (managed by the Omarchy shell).
-//   - All keys are deterministic (no Math.random).
 
 import QtQuick
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 
-// Bar widget icon (top-level)
 Scope {
   id: root
   property string treasuryAddress: ""
@@ -29,6 +27,8 @@ Scope {
   // Cached state from the CLI
   property string balanceBch: "loading..."
   property string lastUpdate: ""
+  property string walletStatus: "loading"  // loading | ok | no-wallet | error
+  property string errorMessage: ""
 
   // Refresh timer
   Timer {
@@ -39,20 +39,83 @@ Scope {
     onTriggered: refreshBalance()
   }
 
-  // IPC: Quickshell calls into the bch-wallet CLI for data
-  function refreshBalance() {
-    // Use Quickshell.Io to call bch-bot balance and update the UI.
-    // (This is a sketch — actual implementation requires Quickshell's
-    // Process or IpcProvider to invoke the CLI binary.)
-    lastUpdate = new Date().toISOString();
+  // Check if bch-bot is in PATH
+  Process {
+    id: checkPath
+    command: ["which", "bch-bot"]
+    onExited: (exitCode) => {
+      if (exitCode !== 0) {
+        root.walletStatus = "no-wallet";
+        root.balanceBch = "no wallet";
+        root.errorMessage = "Install bch-bot CLI: pacman -S bch-bot (Arch) or see https://github.com/lucasmcducas/bch-bot-public";
+      } else {
+        refreshBalance();
+      }
+    }
   }
 
-  // The bar icon — small text showing the balance
+  // Fetch balance
+  Process {
+    id: balanceProc
+    command: ["bch-bot", "balance"]
+    onExited: (exitCode, stdout) => {
+      if (exitCode !== 0) {
+        root.walletStatus = "error";
+        root.errorMessage = "bch-bot balance failed (exit " + exitCode + ")";
+        return;
+      }
+      try {
+        const obj = JSON.parse(stdout);
+        const sats = BigInt(obj.satoshis_confirmed || "0");
+        root.balanceBch = (Number(sats) / 1e8).toFixed(8);
+        root.walletStatus = "ok";
+        root.errorMessage = "";
+        root.lastUpdate = new Date().toISOString();
+      } catch (e) {
+        root.walletStatus = "error";
+        root.errorMessage = "Failed to parse bch-bot output: " + e.message;
+      }
+    }
+  }
+
+  function refreshBalance() {
+    if (walletStatus === "no-wallet") return;  // don't try to refresh if wallet is missing
+    balanceProc.running = true;
+  }
+
+  Component.onCompleted: checkPath.running = true
+
+  // The bar icon — shows different states with hover tooltips
+  // - ok: "Ƀ 0.00858627" in green
+  // - loading: "Ƀ ..." in grey
+  // - no-wallet: "Ƀ ✗" in red with tooltip showing install instructions
+  // - error: "Ƀ !" in orange
   Text {
+    id: barIcon
     anchors.centerIn: parent
-    text: "Ƀ " + root.balanceBch
-    color: "#4ade80"  // BCH green
+    text: {
+      if (root.walletStatus === "ok") return "Ƀ " + root.balanceBch;
+      if (root.walletStatus === "loading") return "Ƀ ...";
+      if (root.walletStatus === "no-wallet") return "Ƀ ✗";
+      if (root.walletStatus === "error") return "Ƀ !";
+      return "Ƀ ?";
+    }
+    color: {
+      if (root.walletStatus === "ok") return "#4ade80";
+      if (root.walletStatus === "no-wallet") return "#f87171";
+      if (root.walletStatus === "error") return "#fb923c";
+      return "#9ca3af";
+    }
     font.pixelSize: 14
     font.bold: true
+
+    MouseArea {
+      id: ma
+      anchors.fill: parent
+      hoverEnabled: true
+    }
+
+    ToolTip.visible: ma.containsMouse && root.walletStatus !== "ok"
+    ToolTip.text: root.errorMessage
   }
 }
