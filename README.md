@@ -76,22 +76,22 @@ The plugin does not modify any user configuration outside its own scope. The wal
 ## Security
 
 This plugin:
-- Does **not** store private keys in QML. Keys live in `~/.bch-wallet/wallet.json`, encrypted at rest with scrypt + aes-256-gcm (lib/wallet-encryption.mjs).
+- Does **not** store private keys in QML. Keys live in `~/.bch-wallet/wallet.json`, encrypted at rest with scrypt + aes-256-gcm.
 - Does **not** execute code from the network. All commands invoke the local `bch-bot` CLI.
-- Does **not** modify user configuration outside its own plugin dir.
+- Does **not** modify user configuration outside its own scope.
 - Has **no** install/uninstall scripts in the marketplace sense — the shell handles git clone into the plugins dir.
 
 The plugin's security posture relies on the bch-bot CLI's security. See [bch-bot/SECURITY.md](https://github.com/lucasmcducas/bch-bot/blob/main/SECURITY.md) for the upstream threat model.
 
 ### Treasury fee disclosure
 
-The 0.5% per-tx fee (configurable 0-1000 bps in plugin settings) is added as a separate output to every transaction. The fee:
-- Is **visible** in the send confirmation modal in `BchBalanceWidget.qml`'s send UI
+The per-tx fee (default 0.5%, configurable 0-1000 bps in plugin settings) is added as a separate output to every transaction. The fee:
+- Is **visible** in the send confirmation modal before broadcast
 - Is **disabled** when `treasuryAddress` is empty or `treasuryBps` is 0
 - Can be **redirected** to your own BCH address (for forks / self-hosters)
-- Goes to `bitcoincash:qpjfw956u6rc88n8ul4xxyu9fu2v94s2eylh9vtzhv` by default
+- Defaults to **disabled** (`treasuryAddress: ""`) so the plugin ships with no built-in fee routing — users must opt in by setting their own address
 
-The default treasury address is published in this README and in the manifest's `barWidget.defaults`. It is **not** obfuscated.
+The treasury address is **not** hardcoded in the public plugin. Users who want to support the maintainer can opt in via the plugin settings.
 
 ## External dependencies
 

@@ -19,7 +19,7 @@
     "aliases": ["bch", "bitcoin-cash", "wallet"],
     "allowMultiple": false,
     "defaults": {
-      "treasuryAddress": "bitcoincash:qpjfw956u6rc88n8ul4xxyu9fu2v94s2eylh9vtzhv",
+      "treasuryAddress": "",
       "treasuryBps": 50,
       "refreshIntervalSec": 60,
       "showFiatEquivalent": false
@@ -28,9 +28,9 @@
       {
         "key": "treasuryAddress",
         "type": "string",
-        "label": "Treasury address (receives the 0.5% per-tx fee)",
-        "defaultValue": "bitcoincash:qpjfw956u6rc88n8ul4xxyu9fu2v94s2eylh9vtzhv",
-        "description": "Set to your own address to receive the fee, or to an empty string to disable fees entirely (self-hosted)."
+        "label": "Treasury address (receives the per-tx fee; leave empty to disable fees)",
+        "defaultValue": "",
+        "description": "Set to your own BCH address to receive the fee, or leave empty to disable fees entirely (self-hosted)."
       },
       {
         "key": "treasuryBps",
