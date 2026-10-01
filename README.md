@@ -50,15 +50,16 @@ omarchy plugin enable io.github.lucasmcducas.bch-wallet --section right
 
 ### What you should see
 
-The widget shows a 💰 icon in the bar's right section:
+A 💰 icon in the bar. On a **left/right** (vertical) bar the slot is only as
+wide as the icon, so the icon stands alone and the balance is in the hover
+tooltip. On a **top/bottom** (horizontal) bar the balance is shown beside the
+icon as text.
 
-- **Balance shown** — the confirmed BCH balance beside the icon, e.g. `0.00858627`
-- **Zero balance** — the icon dims and the label reads `0`
-- **`bch-bot` not installed** — the slot hides itself entirely rather than showing a
-  permanent error icon; hover is not possible once hidden, so reinstall and
-  reload the shell
-- **CLI present but failing** — the icon dims and hover explains why (no network,
-  unreadable wallet)
+- **Balance shown** — gold icon when the balance is non-zero, dimmed when zero
+- **`bch-bot` not installed** — the slot hides itself rather than showing a
+  permanent error icon; reinstall the CLI and reload the shell
+- **CLI present but failing** — the icon dims and hover explains why (no
+  network, unreadable wallet)
 
 Click the icon to refresh immediately. Middle-click opens
 `bch-bot balance` in a floating terminal.
