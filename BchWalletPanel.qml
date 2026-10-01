@@ -51,6 +51,17 @@ Item {
   property string errorMessage: ""
 
   property string balanceBch: "0.00000000"
+  property string balanceUnconfirmed: "0.00000000"
+  property int utxoCount: 0
+  // The fungible-token balances, as an array of {symbol, display, amount,
+  // decimals, category, known}. An array rather than a map because a QML
+  // Repeater model needs a countable list, and because the order matters: the
+  // CLI already sorts by value descending.
+  //
+  // `amount` is exact base units and `display` is the human string. Both are
+  // kept: a future send-token view must use `amount`, and parsing `display`
+  // back is exactly the kind of round-trip that loses a decimal place.
+  property var tokens: []
   property string receiveAddress: ""
   property string receiveNetwork: ""
 
@@ -77,6 +88,10 @@ Item {
   // them: balance | address | send-preview | send-confirm | swap-quote |
   // swap-execute.
   property string pendingKind: ""
+  // Whether the run in flight is a background refresh. Carried on the root
+  // because `pendingKind` is cleared the moment the process exits, and the exit
+  // handler needs to know whether this failure should be loud or quiet.
+  property bool pendingSilent: false
 
   // Captured stdout, read once the process has exited. A Process has no
   // user-defined properties, so the result cannot be stashed on it.
@@ -96,17 +111,125 @@ Item {
     swapQuote = null
   }
 
+  // Refresh the balances. Separate from the bar widget's own timer because the
+  // panel is opened far less often than it is visible, and a balance that is
+  // only fetched on open is stale the moment a swap completes.
+  //
+  // A refresh must not clobber a view the user is in the middle of, and it must
+  // not show a spinner over a form they are typing into. So it deliberately
+  // does NOT touch `status`: a failed background refresh leaves the last known
+  // balances on screen with a small "stale" note rather than blanking a form.
+  property string lastRefreshError: ""
+  property bool refreshing: false
+  // Set once the address has been copied, and cleared when the user navigates
+  // away. A copy with no confirmation is worse than no copy button: the user
+  // pastes whatever was on the clipboard before and sends money to a stranger.
+  property bool copied: false
+
+  // Copy the receive address to the clipboard.
+  //
+  // A dedicated Process rather than the shared `run()` one, for two reasons:
+  // the shared process is reserved for bch-bot subcommands (so a clipboard
+  // failure can never be reported as a wallet failure), and `run()` cannot
+  // feed stdin, which is how the address gets to wl-copy without ever being
+  // interpolated into a shell string. An address passed through a shell is an
+  // address that can be read as syntax; a cashaddr is a fixed charset today, but
+  // that is not the property being relied on.
+  //
+  // --foreground keeps the clipboard content alive after this process exits.
+  // Without it wl-copy can drop the selection when the writer goes away, which
+  // presents to the user as a copy that silently did nothing.
+  //
+  // stdinEnabled is REQUIRED. Verified against the installed Quickshell type
+  // definition (/usr/lib/qt6/qml/Quickshell/Io/quickshell-io.qmltypes), which
+  // exposes both `stdinEnabled` and `write()`. Without stdinEnabled, write()
+  // has no pipe to write to: the address would be dropped and wl-copy would
+  // still exit 0 having copied an empty string, which is a copy button that
+  // lies.
+  Process {
+    id: copyProcess
+    running: false
+    command: ["wl-copy", "--foreground"]
+    stdinEnabled: true
+
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: function (text) {
+        root.lastStdout = String(text || "")
+      }
+    }
+
+    onExited: function (exitCode) {
+      // Zero means wl-copy accepted it. It can exit non-zero when there is no
+      // Wayland display -- a headless login, or an X11 session -- and then the
+      // honest thing is to say so rather than to claim a copy that did not
+      // happen.
+      root.copied = exitCode === 0
+      if (exitCode !== 0) {
+        root.errorMessage = "could not reach the clipboard (no Wayland session?) — select the address and copy it manually"
+      }
+    }
+  }
+
+  function copyAddress() {
+    if (!root.receiveAddress) return
+    root.errorMessage = ""
+    if (copyProcess.running) return
+    // Quickshell's Process has no stdin pipe: `write()` is the only way to hand
+    // it data. Writing immediately can race the child not having opened stdin
+    // yet, so the write is deferred one event-loop turn. If the write is lost
+    // the clipboard ends up empty and wl-copy still exits 0, which is why the
+    // success state is short-lived rather than sticky.
+    copyProcess.running = true
+    Qt.callLater(function () {
+      if (copyProcess.running) copyProcess.write(root.receiveAddress)
+    })
+  }
+
+  function refreshBalances() {
+    if (root.status === "busy") return
+    root.refreshing = true
+    // Reuses the existing "balance" kind rather than adding a parallel
+    // "balance-refresh" one. Two kinds feeding the same parser is how the two
+    // drift apart, and the only difference here is whether a failure is
+    // surfaced or swallowed -- which is decided by `silent` below, not by
+    // duplicating the result handler.
+    run(["bch-bot", "balance"], "balance", [], true)
+  }
+
+  // A background refresh is best-effort: on failure keep what is on screen and
+  // mark it, because an empty balance panel is indistinguishable from an empty
+  // wallet and reads as a loss of funds.
+  function onRefreshResult(parsed) {
+    root.refreshing = false
+    if (!parsed) {
+      root.lastRefreshError = "balance unavailable — showing the last known value"
+      return
+    }
+    root.lastRefreshError = ""
+  }
+
   // Runs a bch-bot subcommand and routes the result to `applyResult`.
   // `env` is a list of KEY=VALUE pairs prefixed onto the command with env(1),
   // which keeps BCH_CONFIRM visible in the command line rather than hidden in
   // a side channel.
   //
+  // `silent` marks a BACKGROUND run. A background refresh must not take over
+  // the panel: it should not clear the view, raise a full-screen error, or
+  // block the user from clicking anything while it runs. A silent failure is
+  // recorded in `lastRefreshError` and leaves the last known values on screen.
+  // A user who sees an empty balance panel will assume the money is gone, so
+  // "show me nothing and say nothing" is the one response that is never right.
+  //
   // The result is a tagged union rather than a callback: a callback stashed on
   // the Process would need a property the type does not have, and a plain
   // string cannot say which view it belongs to.
-  function run(cmd, kind, env) {
+  function run(cmd, kind, env, silent) {
     if (status === "busy") return
-    status = "busy"
+    pendingSilent = silent === true
+    // A background run leaves `status` alone so the current view is untouched
+    // and the buttons stay live. A foreground run shows "busy" as before.
+    if (!pendingSilent) status = "busy"
     errorMessage = ""
     pendingKind = kind
     var full = cmd.slice()
@@ -199,8 +322,40 @@ Item {
   function applyResult(kind, text) {
     var parsed = parseJson(text)
     if (kind === "balance") {
-      if (!parsed) return fail("could not read the balance from bch-bot")
+      if (!parsed) {
+        // A background refresh must not blank the balance or raise an error the
+        // user did not trigger. Only a foreground load is allowed to fail loudly.
+        if (root.pendingSilent || root.refreshing) {
+          root.refreshing = false
+          root.lastRefreshError = "balance unavailable — showing the last known value"
+          return
+        }
+        return fail("could not read the balance from bch-bot")
+      }
       balanceBch = String(parsed.bch_confirmed || "0.00000000")
+      balanceUnconfirmed = String(parsed.bch_unconfirmed || "0.00000000")
+      utxoCount = Number(parsed.utxo_count || 0)
+      // `tokens` is an object keyed by category id, so it has to be turned into
+      // a list for the Repeater. Object.values preserves the CLI's ordering,
+      // which is already sorted by value descending.
+      var list = []
+      var byCategory = parsed.tokens || {}
+      for (var key in byCategory) {
+        if (!Object.prototype.hasOwnProperty.call(byCategory, key)) continue
+        var t = byCategory[key]
+        list.push({
+          category: key,
+          // `display` is the wallet's own decimal-aware string, and `amount`
+          // is exact base units. Showing the symbol when known, and a short id
+          // when not, beats showing a raw 64-character category to a human.
+          symbol: t.symbol || t.short_id || "token",
+          display: t.display || t.amount || "0",
+          amount: String(t.amount || "0"),
+          decimals: Number(t.decimals || 0),
+          known: t.known === true
+        })
+      }
+      tokens = list
       return
     }
     if (kind === "address") {
@@ -267,15 +422,30 @@ Item {
 
     onExited: function (exitCode) {
       var kind = root.pendingKind
+      var wasSilent = root.pendingSilent
       root.pendingKind = ""
+      root.pendingSilent = false
       if (exitCode !== 0) {
         // bch-bot prints usage to stdout on a bad-argument error, so an error
         // with no useful message is almost always a bad field.
         var detail = root.errorMessage || ("bch-bot exited " + exitCode)
+        if (wasSilent) {
+          // A background refresh failed. Keep the panel exactly as it is and
+          // mark the figures as not current -- do NOT blank the balance, and do
+          // not raise an error the user did not trigger.
+          root.refreshing = false
+          root.lastRefreshError = "balance unavailable — showing the last known value"
+          root.errorMessage = ""
+          return
+        }
         root.status = "error"
         root.errorMessage = detail
         if (/no wallet/i.test(detail)) root.reset()
         return
+      }
+      if (wasSilent) {
+        root.refreshing = false
+        root.lastRefreshError = ""
       }
       root.applyResult(kind, root.lastStdout)
       root.lastStdout = ""
@@ -323,10 +493,35 @@ Item {
       Layout.fillWidth: true
       spacing: Style.space(10)
 
-      Text {
-        text: "Balance"
-        color: root.dim
-        font.pixelSize: Style.font.body
+      RowLayout {
+        Layout.fillWidth: true
+
+        Text {
+          text: "Balance"
+          color: root.dim
+          font.pixelSize: Style.font.body
+          Layout.fillWidth: true
+        }
+
+        // A refresh control rather than a bare label: the balance changes when
+        // a swap lands, and a user who just watched one complete should not
+        // have to reopen the panel to see it. Disabled while a run is in
+        // flight, so a double-click cannot queue two `bch-bot balance` calls.
+        Text {
+          id: refreshLabel
+          text: root.refreshing ? "…" : "↻"
+          color: root.refreshing ? root.dim : root.fg
+          font.pixelSize: Style.font.body
+          opacity: root.refreshing ? 0.5 : 1.0
+
+          MouseArea {
+            anchors.fill: parent
+            anchors.margins: -Style.space(6)
+            enabled: !root.refreshing && root.status !== "busy"
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.refreshBalances()
+          }
+        }
       }
 
       Text {
@@ -334,6 +529,97 @@ Item {
         color: root.fg
         font.pixelSize: Style.font.title
         font.family: Style.font.family
+      }
+
+      // A mempool deposit is real money that is not yet spendable, and showing
+      // only the confirmed figure makes the balance look like it dropped. It
+      // gets its own line rather than a tooltip: a user who just funded the
+      // wallet is exactly the person who needs to see "still confirming".
+      Text {
+        visible: Number(root.balanceUnconfirmed) > 0
+        text: "+" + root.balanceUnconfirmed + " BCH confirming"
+        color: root.dim
+        font.pixelSize: Style.font.bodySmall
+      }
+
+      Text {
+        visible: root.utxoCount > 0
+        text: root.utxoCount + (root.utxoCount === 1 ? " UTXO" : " UTXOs")
+        color: root.dim
+        font.pixelSize: Style.font.bodySmall
+      }
+
+      // ---- CashTokens
+      //
+      // Shown as their own section rather than a footnote, because a CashTokens
+      // holding is real money: a wallet holding 1 ROACH and no BCH is not "empty",
+      // and hiding it behind a count is how someone sends the BCH out and
+      // assumes the token went with it.
+      ColumnLayout {
+        visible: root.tokens.length > 0
+        Layout.fillWidth: true
+        Layout.topMargin: Style.space(4)
+        spacing: Style.space(6)
+
+        Text {
+          text: "Tokens"
+          color: root.dim
+          font.pixelSize: Style.font.body
+        }
+
+        Repeater {
+          model: root.tokens
+
+          RowLayout {
+            id: tokenRow
+            required property var modelData
+            Layout.fillWidth: true
+            spacing: Style.space(8)
+
+            Text {
+              text: tokenRow.modelData.symbol
+              color: root.fg
+              font.pixelSize: Style.font.body
+              font.family: Style.font.family
+              // An unknown category id is shown shortened, never in full: 64
+              // characters of hex is not a label, and it would blow out the
+              // layout on a narrow bar.
+              elide: Text.ElideRight
+              Layout.maximumWidth: Style.space(140)
+            }
+
+            Text {
+              text: tokenRow.modelData.display
+              color: root.fg
+              font.pixelSize: Style.font.body
+              font.family: Style.font.family
+              Layout.fillWidth: true
+            }
+
+            // The raw base-unit figure, dimmed. The displayed amount depends on
+            // an ASSUMED decimal count for an unrecognised token, and this is
+            // how a user can see the exact number the wallet will actually send.
+            Text {
+              visible: !tokenRow.modelData.known
+              text: tokenRow.modelData.amount + " base units"
+              color: root.dim
+              font.pixelSize: Style.font.bodySmall
+              elide: Text.ElideRight
+              Layout.maximumWidth: Style.space(120)
+            }
+          }
+        }
+      }
+
+      // A failed background refresh leaves the last known figures up rather than
+      // blanking them, so say plainly that they are not current.
+      Text {
+        visible: root.lastRefreshError !== ""
+        text: root.lastRefreshError
+        color: root.dim
+        font.pixelSize: Style.font.bodySmall
+        wrapMode: Text.WordWrap
+        Layout.fillWidth: true
       }
 
       RowLayout {
@@ -378,9 +664,37 @@ Item {
         font.pixelSize: Style.font.bodySmall
       }
 
+      RowLayout {
+        Layout.fillWidth: true
+        Layout.topMargin: Style.space(4)
+        spacing: Style.space(8)
+
+        Button {
+          text: root.copied ? "Copied" : "Copy address"
+          enabled: root.receiveAddress !== "" && !root.copied
+          onClicked: root.copyAddress()
+        }
+
+        Button {
+          text: "Done"
+          onClicked: { root.view = "home"; root.copied = false }
+        }
+      }
+
+      // Feedback, not a hope. A copy button with no confirmation leaves the
+      // user pasting whatever was on the clipboard before, and an address that
+      // looks copied but is not is how money goes to the wrong chain.
       Text {
-        visible: root.receiveAddress !== ""
-        text: "Copy the address above, or scan it as a QR code from another wallet."
+        visible: root.copied
+        text: "Address copied to the clipboard."
+        color: root.dim
+        font.pixelSize: Style.font.bodySmall
+        Layout.fillWidth: true
+      }
+
+      Text {
+        visible: root.receiveAddress !== "" && !root.copied
+        text: "This is a fresh address each time. Anyone who has seen it can see what you receive."
         color: root.dim
         font.pixelSize: Style.font.bodySmall
         wrapMode: Text.WordWrap
