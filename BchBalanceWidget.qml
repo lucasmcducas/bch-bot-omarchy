@@ -16,6 +16,9 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Ui
+// Style and Color are singletons in qs.Commons, not qs.Ui. The KeyboardPanel
+// popup below is sized with Style tokens, so the import is required here too.
+import qs.Commons
 
 BarWidget {
   id: root
@@ -166,7 +169,9 @@ BarWidget {
   // `panelOpen` mirrors the KeyboardPanel's own state through a binding, so
   // right-click toggles what the panel is actually doing -- including a close
   // triggered by clicking outside it.
-  readonly property bool panelOpen: walletPanel.open === true
+  // Single source of truth for the popup: the widget sets it, the
+  // KeyboardPanel follows it. Reading it back off the panel would be circular.
+  property bool panelOpen: false
 
   function handlePress(pressedButton) {
     if (pressedButton === Qt.MiddleButton) {
@@ -175,8 +180,7 @@ BarWidget {
       return
     }
     if (pressedButton === Qt.RightButton) {
-      if (root.panelOpen) walletPanel.open = false
-      else walletPanel.open = true
+      root.panelOpen = !root.panelOpen
       return
     }
     root.refresh()
@@ -210,7 +214,7 @@ BarWidget {
     anchorItem: button
     owner: root
     bar: root.bar
-    open: root.opened
+    open: root.panelOpen
     focusTarget: walletContent
     contentWidth: Style.space(360)
     contentHeight: walletContent.implicitHeight + Style.space(32)
@@ -219,6 +223,9 @@ BarWidget {
       id: walletContent
       width: parent.width
       closeRequested: function() { walletPanel.open = false }
+      // The bar owns the theme; the panel follows it rather than assuming a
+      // background it may be sitting on.
+      foreground: root.bar ? root.bar.barForeground : Color.foreground
     }
   }
 

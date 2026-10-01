@@ -38,6 +38,11 @@ Item {
   // its own -- the KeyboardPanel does -- so the host injects the callback.
   property var closeRequested: null
 
+  // Foreground colour, injected by the host. A Panel used to supply this via
+  // its own barForeground; as a plain Item there is no bar reference, and
+  // Color.foreground is the same token the Panel base falls back to.
+  property color foreground: Color.foreground
+
   // ------------------------------------------------------------------- state
 
   // view: home | send | receive | swap
@@ -72,7 +77,7 @@ Item {
 
   // ------------------------------------------------------------------ helpers
 
-  readonly property color fg: barForeground
+  readonly property color fg: foreground
   readonly property color dim: Qt.darker(fg, 1.5)
 
   function reset() {
