@@ -375,14 +375,17 @@ Item {
       }
 
       Text {
-        text: "Amount (BCH)"
+        text: "Amount (BCH or sats)"
         color: root.dim
         font.pixelSize: Style.font.bodySmall
       }
 
       TextField {
         Layout.fillWidth: true
-        placeholderText: "0.001"
+        // bch-bot send accepts BCH (0.001) or a bare integer of satoshis
+        // (1000). Label both, because the two are not interchangeable and a
+        // user who assumes sats here sends 100x less than intended.
+        placeholderText: "0.001 BCH or 1000 sats"
         text: root.sendAmount
         onTextChanged: { root.sendAmount = text; root.sendPreview = null }
       }
@@ -398,7 +401,12 @@ Item {
 
         Repeater {
           model: [
-            { label: "Amount", value: root.sendAmount + " BCH" },
+            // The user may have typed BCH ("0.001") or satoshis ("1000"), and
+            // the two mean very different things. Echo back what they typed,
+            // rather than asserting a unit: labelling 1000 as "BCH" would
+            // overstate the amount a hundredfold, and guessing wrong in the
+            // other direction understates it.
+            { label: "Amount", value: root.sendAmount },
             { label: "Service fee", value: "0.00000000 BCH" },
             { label: "Network fee", value: root.sendPreview
                 ? (Number(root.sendPreview.fee) / 1e8).toFixed(8) + " BCH" : "" },
@@ -536,7 +544,12 @@ Item {
           model: [
             { label: "You receive", value: root.swapQuote ? root.swapQuote.expected_output : "" },
             { label: "Pools used", value: root.swapQuote ? String(root.swapQuote.pools) : "" },
-            { label: "Service fee", value: "0.00000000 BCH" },
+            // The router charges its fee at BUILD time, not quote time, so a
+            // quote genuinely carries no fee figure. Do not print 0.00000000
+            // here: the trade does cost ~0.1% plus the LP fee, and a flat zero
+            // tells the user a value-moving operation is free. The exact
+            // amounts are itemised in the broadcast receipt after the swap.
+            { label: "Service fee", value: "charged at execution" },
           ]
 
           RowLayout {
