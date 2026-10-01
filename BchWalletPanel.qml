@@ -154,8 +154,8 @@ Item {
 
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: function (text) {
-        root.lastStdout = String(text || "")
+      onStreamFinished: {
+        root.lastStdout = String(text)
       }
     }
 
@@ -403,15 +403,18 @@ Item {
 
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: function (text) {
-        root.lastStdout = String(text || "")
+      // Quickshell 0.3.1: streamFinished() has no parameters; read the `text`
+      // property. The `function (text)` form yields undefined, so lastStdout
+      // came back empty and every command's result was lost.
+      onStreamFinished: {
+        root.lastStdout = String(text)
       }
     }
 
     stderr: StdioCollector {
       waitForEnd: true
-      onStreamFinished: function (text) {
-        var message = String(text || "").trim()
+      onStreamFinished: {
+        var message = String(text).trim()
         if (message === "") return
         // bch-bot writes a plaintext-wallet warning to stderr on SUCCESS, so
         // this is only surfaced when the command actually failed.
