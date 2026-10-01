@@ -234,7 +234,7 @@ Panel {
           return "BCH Wallet"
         }
         color: root.fg
-        font.pixelSize: Style.font.titleLarge
+        font.pixelSize: Style.font.title
         font.family: Style.font.family
         font.bold: true
         Layout.fillWidth: true
@@ -244,7 +244,7 @@ Panel {
         visible: root.status === "busy"
         text: "…"
         color: root.dim
-        font.pixelSize: Style.font.titleLarge
+        font.pixelSize: Style.font.title
       }
     }
 
@@ -263,7 +263,7 @@ Panel {
       Text {
         text: root.balanceBch + " BCH"
         color: root.fg
-        font.pixelSize: Style.font.titleLarge
+        font.pixelSize: Style.font.title
         font.family: Style.font.family
       }
 
@@ -409,8 +409,8 @@ Panel {
       }
 
       Text {
-        visible: root.sendConfirmed && root.sendPreview !== null
-        text: "Broadcast: " + (root.sendPreview.tx_hash || "").slice(0, 16) + "…"
+        visible: root.sendConfirmed && root.sendPreview !== null && !!root.sendPreview.tx_hash
+        text: "Broadcast: " + String(root.sendPreview && root.sendPreview.tx_hash || "").slice(0, 16) + "…"
         color: root.fg
         font.pixelSize: Style.font.bodySmall
         font.family: Style.font.family
