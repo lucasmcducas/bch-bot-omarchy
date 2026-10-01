@@ -5,38 +5,31 @@
   "version": "0.1.0",
   "author": "Luke McDucas (via Jav)",
   "license": "MIT",
-  "description": "Self-custodial Bitcoin Cash (BCH) wallet in your Omarchy bar — balance, recent activity, and one-shot send/receive commands.",
-  "kinds": ["bar-widget", "command"],
+  "description": "Self-custodial Bitcoin Cash (BCH) wallet in your Omarchy bar — live balance and UTXO count, one click to refresh.",
+  "kinds": ["bar-widget"],
   "activation": "on-demand",
   "entryPoints": {
-    "barWidget": "BchBalanceWidget.qml",
-    "command": "BchCommand.qml"
+    "barWidget": "BchBalanceWidget.qml"
   },
   "barWidget": {
     "displayName": "BCH Balance",
-    "description": "Live BCH balance + recent activity, with send/receive hotkeys.",
+    "description": "Live BCH balance and UTXO count. Click to refresh, middle-click to open the CLI.",
     "category": "Productivity",
     "aliases": ["bch", "bitcoin-cash", "wallet"],
     "allowMultiple": false,
+    "defaultSection": "right",
     "defaults": {
-      "refreshIntervalSec": 60,
-      "showFiatEquivalent": false
+      "refreshIntervalSec": 60
     },
     "schema": [
       {
         "key": "refreshIntervalSec",
         "type": "integer",
         "label": "Balance refresh interval (seconds)",
-        "min": 10,
+        "min": 15,
         "max": 3600,
-        "step": 10,
+        "step": 15,
         "defaultValue": 60
-      },
-      {
-        "key": "showFiatEquivalent",
-        "type": "boolean",
-        "label": "Show USD equivalent",
-        "defaultValue": false
       }
     ]
   }

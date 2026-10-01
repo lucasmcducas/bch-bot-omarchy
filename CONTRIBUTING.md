@@ -64,8 +64,8 @@ Every PR must:
 ## Architecture
 
 - `manifest.json` — schemaVersion 1, namespaced id, kinds, entryPoints, optional kind-specific config block.
-- `BchBalanceWidget.qml` — bar widget root.
-- `BchCommand.qml` — IPC command root.
+- `BchBalanceWidget.qml` — the bar widget. `BarWidget` root, one `BarIconButton`, one
+  `Process` running `bch-bot balance`. No wallet logic, no keys, no signing in QML.
 - `README.md` — install + remove instructions, security disclosure.
 - `SECURITY.md` — addresses each marketplace baseline pattern.
 - `LICENSE` — MIT.
@@ -74,7 +74,9 @@ Every PR must:
 
 ## Style
 
-- QML: follow existing patterns in `BchBalanceWidget.qml` and `BchCommand.qml`.
+- QML: follow `BchBalanceWidget.qml`. Its shape mirrors the first-party widgets in
+  `omacom/omarchy` under `shell/plugins/bar/widgets/` — check there before inventing
+  a pattern.
 - Comments: explain *why* in 1-3 lines, not what.
 - Indent: 2 spaces (matches Omarchy convention).
 - Commit messages: imperative present tense ("fix", not "fixed").

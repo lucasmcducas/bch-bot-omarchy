@@ -50,20 +50,33 @@ omarchy plugin enable io.github.lucasmcducas.bch-wallet --section right
 
 ### What you should see
 
-- After both installs: green "Ƀ 0.00858627" in the bar (your balance)
-- If only the plugin is installed: red "Ƀ ✗" with hover tooltip: *"Install bch-bot CLI: yay -S bch-bot"*
-- Click the red icon to see the install command.
+The widget shows a 💰 icon in the bar's right section:
+
+- **Balance shown** — the confirmed BCH balance beside the icon, e.g. `0.00858627`
+- **Zero balance** — the icon dims and the label reads `0`
+- **`bch-bot` not installed** — the slot hides itself entirely rather than showing a
+  permanent error icon; hover is not possible once hidden, so reinstall and
+  reload the shell
+- **CLI present but failing** — the icon dims and hover explains why (no network,
+  unreadable wallet)
+
+Click the icon to refresh immediately. Middle-click opens
+`bch-bot balance` in a floating terminal.
 
 ### QML validation
 
-Before publishing or submitting to the marketplace, lint your QML:
-
 ```bash
 qmllint BchBalanceWidget.qml
-qmllint BchCommand.qml
 ```
 
-`qmllint` ships with `qtdeclarative5-dev-tools` (Arch) or equivalent on other distros.
+`qmllint` ships with `qtdeclarative5-dev-tools` (Arch) or equivalent elsewhere.
+
+Be aware of what it does *not* check: it is a syntax verifier, so it reports a
+malformed file but happily passes a file that calls a method which does not
+exist. The first version of this widget used `Scope` as its root and read
+stdout from an `onExited` second argument — both wrong against the real shell,
+and both passed `qmllint`. The structural check that does catch this class of
+bug is running the plugin on a real Omarchy install.
 
 ### Step 1: Install the bch-bot CLI (do this first)
 
@@ -74,6 +87,8 @@ The plugin needs the `bch-bot` CLI to be on your `$PATH`. Install it via one of:
 yay -S bch-bot
 ```
 
+> Not submitted yet — see the note under Option B.
+
 **Option B — from source (recommended for now; AUR submission is pending)**
 ```bash
 git clone https://github.com/lucasmcducas/bch-bot-public.git
@@ -81,6 +96,10 @@ cd bch-bot-public
 npm ci
 npm link                                                # makes 'bch-bot' available globally
 ```
+
+Note that `bch-bot` is not in the AUR yet — the PKGBUILD is written and pinned
+but has not been submitted, so `yay -S bch-bot` will not find it. Use the source
+install above for now.
 
 **Option C — local install for development**
 ```bash
@@ -123,11 +142,14 @@ omarchy plugin enable io.github.lucasmcducas.bch-wallet --section right
 
 ### Step 3: Restart Omarchy (or reload the shell)
 
-The plugin runs `which bch-bot` on startup. After installing the CLI, restart Omarchy (or send a reload signal) so the widget re-detects the CLI.
+After installing the CLI, restart Omarchy (or reload the shell) so the widget
+picks it up. The widget spawns `bch-bot balance` once at load and then on its
+refresh interval, so a CLI installed after the shell started is not noticed
+until a reload.
 
 You should see:
-- Red "Ƀ ✗" with hover tooltip if bch-bot is missing
-- Green "Ƀ 0.00858627" once bch-bot is on `$PATH` and the wallet is loaded
+- The 💰 icon with your balance once `bch-bot` is on `$PATH` and a wallet exists
+- No slot at all if `bch-bot` is not installed
 
 ## Removal
 
@@ -179,10 +201,9 @@ Plugins are git repos with a `manifest.json` at the root. The shell clones them 
   "author": "...",
   "license": "MIT",
   "description": "...",
-  "kinds": ["bar-widget", "command"],
+  "kinds": ["bar-widget"],
   "entryPoints": {
-    "barWidget": "BchBalanceWidget.qml",
-    "command": "BchCommand.qml"
+    "barWidget": "BchBalanceWidget.qml"
   },
   "barWidget": {
     "displayName": "...",
