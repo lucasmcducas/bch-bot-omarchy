@@ -132,6 +132,26 @@ if grep -nE "(balance|amount)[A-Za-z]*:\s*\"?[0-9]{4,}\s*(BCH|sat)" $QML_FILES >
 fi
 
 if [ $EXIT -eq 0 ]; then
+  # 7. A bar-anchored popup must live inside the bar slot that owns it. A
+  #    separate `panel` entry point is loaded by the shell's own panel loader,
+  #    which the bar never looks at -- the plugin summons successfully and
+  #    paints nothing. Every first-party panel (network, bluetooth, monitor,
+  #    power) declares kinds: ["bar-widget"] and hosts a KeyboardPanel.
+  if [ -f ./manifest.json ]; then
+    KINDS=$(jq -r '.kinds | join(",")' ./manifest.json 2>/dev/null || echo "")
+    if [ "$KINDS" != "bar-widget" ]; then
+      echo "SAFETY: manifest kinds is '$KINDS', expected exactly 'bar-widget'" >&2
+      fail "a bar-anchored plugin must declare only the bar-widget kind"
+    fi
+    EP=$(jq -r '.entryPoints | keys | join(",")' ./manifest.json 2>/dev/null || echo "")
+    if [ "$EP" != "barWidget" ]; then
+      echo "SAFETY: manifest entryPoints is '$EP', expected only 'barWidget'" >&2
+      fail "a second entry point is unreachable from the bar"
+    fi
+  fi
+fi
+
+if [ $EXIT -eq 0 ]; then
   echo "check-wallet-safety: clean (QML cannot reach a key)"
 fi
 exit $EXIT

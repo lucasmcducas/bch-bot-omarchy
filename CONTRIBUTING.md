@@ -64,14 +64,38 @@ Every PR must:
 ## Architecture
 
 - `manifest.json` — schemaVersion 1, namespaced id, kinds, entryPoints, optional kind-specific config block.
-- `BchBalanceWidget.qml` — the bar widget. `BarWidget` root, one `BarIconButton`, one
-  `Process` running `bch-bot balance`. No wallet logic, no keys, no signing in QML.
+  Declares **`kinds: ["bar-widget"]` only**.
+- `BchBalanceWidget.qml` — the entry point. A `BarWidget` that shows the balance in the
+  bar *and hosts the wallet popup* in a `KeyboardPanel` child. No wallet logic, no keys,
+  no signing in QML.
+- `BchWalletPanel.qml` — the popup's content: receive, send, swap. A plain `Item`,
+  because the `KeyboardPanel` already owns the window and the open/close lifecycle.
 - `README.md` — install + remove instructions, security disclosure.
 - `SECURITY.md` — addresses each marketplace baseline pattern.
 - `LICENSE` — MIT.
 - `audit-public.sh` — pre-push gate: fails on strings that must not be public.
 - `check-wallet-safety.sh` — pre-push gate: fails if QML can reach a key.
 - `COLLABORATION.md` — the team plan.
+
+### Why there is no `panel` kind
+
+A bar-anchored popup has to live **inside the bar slot that owns it**. `Bar.qml`
+resolves one by walking `moduleSlots` and looking for an item with
+`open`/`close`/`opened` on the slot's `activeItem`. A separate `panel` entry
+point is loaded by the shell's own panel loader instead — a different object,
+in a different lifecycle, that the bar never looks at. The result is a plugin
+that summons successfully and paints nothing.
+
+Every first-party panel that opens from a bar icon is declared this way:
+`network`, `bluetooth`, `monitor` and `power` all declare
+`kinds: ["bar-widget"]` with their `Panel.qml` as the `barWidget` entry point,
+and the popup window is a `KeyboardPanel` child of that file. `KeyboardPanel`
+supplies the layer-shell window, the anchored-to-icon position, the
+outside-click region mask that leaves the bar clickable, the fade, and popout
+coordination.
+
+The same applies to the manifest's `entryPoints`: adding a `panel` entry point
+alongside a `bar-widget` one makes the panel unreachable.
 
 ## The QML/CLI boundary (enforced, not documented)
 
