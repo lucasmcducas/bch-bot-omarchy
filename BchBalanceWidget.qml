@@ -90,8 +90,14 @@ BarWidget {
 
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: function(text) {
-        var raw = String(text || "").trim()
+
+      // Quickshell 0.3.1 declares `streamFinished()` with NO parameters -- the
+      // captured bytes live in the `text` property, not in a signal argument.
+      // Using `onStreamFinished: function(text)` passes undefined, which
+      // `.trim()` then reads as "", and the widget shows "no output" forever
+      // even though the process exits 0. Read the property instead.
+      onStreamFinished: {
+        var raw = String(text).trim()
         if (raw === "") {
           root.pendingStatus = "error"
           root.pendingError = "no output"
@@ -114,8 +120,9 @@ BarWidget {
 
     stderr: StdioCollector {
       waitForEnd: true
-      onStreamFinished: function(text) {
-        var message = String(text || "").trim()
+      // Same no-parameter signature as stdout -- read the `text` property.
+      onStreamFinished: {
+        var message = String(text).trim()
         if (message !== "") root.pendingError = message.split("\n")[0]
       }
     }
