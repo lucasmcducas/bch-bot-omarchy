@@ -69,8 +69,38 @@ Every PR must:
 - `README.md` — install + remove instructions, security disclosure.
 - `SECURITY.md` — addresses each marketplace baseline pattern.
 - `LICENSE` — MIT.
-- `audit-public.sh` — pre-commit gate.
+- `audit-public.sh` — pre-push gate: fails on strings that must not be public.
+- `check-wallet-safety.sh` — pre-push gate: fails if QML can reach a key.
 - `COLLABORATION.md` — the team plan.
+
+## The QML/CLI boundary (enforced, not documented)
+
+**The QML is a view. The CLI owns every key, every signature, and every
+broadcast.** That is what stops a compromised or buggy shell from spending
+anything, and it is why the widget spawns `bch-bot` rather than reimplementing a
+wallet.
+
+`check-wallet-safety.sh` enforces it and fails the push if any of these appear
+in a `.qml` file:
+
+| Check | Why |
+|---|---|
+| `BCH_CONFIRM` anywhere | the broadcast gate belongs to the CLI; a widget that can set it can spend without asking |
+| `mnemonic`, `privateKey`, `xpriv`, `wallet.json`, `BCH_WALLET_PASSPHRASE` | keys must never be read by the view layer |
+| a `["bch-bot", "<cmd>"]` invocation where `<cmd>` moves value | only read-only subcommands (`balance`, `address`, `history`, `utxos`, `quote`) may be spawned from QML |
+| `cashaddr` / `bitcoincash:` handling | address parsing and validation live in the CLI, which is the layer with tests over them |
+| a hardcoded `NNNN BCH` figure | a fabricated balance renders as a real one with no wallet behind it |
+
+Run both gates before every push:
+
+```bash
+./audit-public.sh && ./check-wallet-safety.sh
+```
+
+If a future change genuinely needs one of these, the answer is to add a
+subcommand to the CLI — not to relax the gate. A rule written in prose is
+out-competed by whatever the code already does; a rule that fails the build
+cannot be.
 
 ## Style
 
