@@ -67,13 +67,26 @@ if [ -n "$INVOKED" ]; then
     # be pasted into the widget, which is a different trust surface. So the
     # per-file counts are compared: a sensitive command must occur exactly as
     # many times in the panel as it does in total.
+    #
+    # count() must never fail open. `grep -c ... || echo 0` is wrong: when grep
+    # finds nothing it prints 0 AND exits 1, so the fallback appends a second
+    # 0 and the value becomes the two-line string "0\n0". The arithmetic
+    # comparison then raises "integer expression expected", the `if` takes the
+    # false branch, and a sensitive command sitting outside the panel is
+    # silently accepted -- the exact case this check exists to catch. awk
+    # always prints exactly one number, so the substitution is well-formed
+    # whether or not grep matched.
+    count() {
+      grep -coE "$1" $2 2>/dev/null | awk -F: '{s+=$NF} END {print s+0}'
+    }
+
     for cmd in $BAD; do
-      TOTAL=$(grep -coE "\[\s*\"bch-bot\"\s*,\s*\"${cmd}\"" $QML_FILES 2>/dev/null \
-              | awk -F: '{s+=$NF} END {print s+0}')
-      IN_PANEL=$(grep -coE "\[\s*\"bch-bot\"\s*,\s*\"${cmd}\"" ./BchWalletPanel.qml 2>/dev/null || echo 0)
+      PAT="\[\s*\"bch-bot\"\s*,\s*\"${cmd}\""
+      TOTAL=$(count "$PAT" "$QML_FILES")
+      IN_PANEL=$(count "$PAT" "./BchWalletPanel.qml")
       if [ "$IN_PANEL" -lt "$TOTAL" ]; then
         echo "SAFETY: bch-bot $cmd is invoked outside BchWalletPanel.qml" >&2
-        grep -nE "\[\s*\"bch-bot\"\s*,\s*\"${cmd}\"" $QML_FILES >&2
+        grep -nE "$PAT" $QML_FILES >&2
         fail "value-moving subcommands belong in the panel only"
       fi
     done
