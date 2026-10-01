@@ -42,46 +42,127 @@ jobs:
       # shipped a version of that bug: check-wallet-safety.sh printed
       # "integer expression expected" to stderr and then exited 0.
       #
-      # This plants each known bypass and requires the gate to reject it. If a
-      # future change to the gate makes it permissive again, the build fails
-      # here rather than in a user's shell.
-      - name: the gate must reject a sensitive command outside the panel
+      # Each case below was a real gap at some point, found by running this
+      # suite rather than by reasoning about the gate. If a future change makes
+      # the gate permissive again, the build fails here rather than in a user's
+      # shell. Keep this list growing: every bypass that gets written down is a
+      # bypass that cannot come back silently.
+      - name: the gate must reject every known bypass
         run: |
-          set -euo pipefail
+          set -uo pipefail
           cp BchBalanceWidget.qml /tmp/widget.bak
-          trap 'cp /tmp/widget.bak BchBalanceWidget.qml' EXIT
-          printf '\n// run(["bch-bot", "stake"], "x")\n' >> BchBalanceWidget.qml
-          if ./check-wallet-safety.sh >/dev/null 2>&1; then
-            echo "::error::gate passed a sensitive command outside the panel"
+          cp BchWalletPanel.qml /tmp/panel.bak
+          cp manifest.json /tmp/manifest.bak
+          cleanup() {
+            cp /tmp/widget.bak BchBalanceWidget.qml
+            cp /tmp/panel.bak BchWalletPanel.qml
+            cp /tmp/manifest.bak manifest.json
+            rm -f BchInjected.qml
+          }
+          trap cleanup EXIT
+
+          failures=0
+          # must_reject <name> <expect-nonzero-if-violation-present>
+          check() {
+            local name="$1"
+            if ./check-wallet-safety.sh >/dev/null 2>&1; then
+              echo "  ✗ $name -- gate PASSED it"
+              failures=$((failures + 1))
+            else
+              echo "  ✓ $name rejected"
+            fi
+            cleanup
+          }
+
+          # The baseline must pass, or every case below is meaningless.
+          if ! ./check-wallet-safety.sh >/dev/null 2>&1; then
+            echo "::error::the clean tree FAILS the gate -- the gate is broken, not the tree"
             exit 1
           fi
-          echo "gate correctly rejected it"
+          echo "  ✓ clean tree passes"
 
-      - name: the gate must reject a process outside the panel that can move value
-        run: |
-          set -euo pipefail
+          # 1. a sensitive command outside the panel (the fail-open arithmetic bug)
+          printf '\n// run(["bch-bot", "stake"], "x")\n' >> BchBalanceWidget.qml
+          check "sensitive command outside the panel"
+
+          # 2. the original audit payload: a broadcast assembled from split strings
           cat > BchInjected.qml <<'QML'
           import Quickshell
           import Quickshell.Io
-          Item {
-            id: root
+          Item { id: root
             property var confirmFlag: ["BCH_" + "CONFIRM" + "=yes"]
             property var verb: ["sw" + "eep"]
-            function run(cmd, kind, env) {
-              var full = ["env"].concat(env).concat(cmd)
-              process.command = full
-              process.running = true
-            }
-            Process { id: process; running: false; command: [] }
+            function run(c, k, e) { var f = ["env"].concat(e).concat(c); p.command = f; p.running = true }
+            Process { id: p; running: false; command: [] }
             Component.onCompleted: run(["bch-bot", root.verb], "balance", root.confirmFlag)
           }
           QML
-          trap 'rm -f BchInjected.qml' EXIT
-          if ./check-wallet-safety.sh >/dev/null 2>&1; then
-            echo "::error::gate passed a QML file that constructs a broadcast from split strings"
+          check "split-string broadcast with BCH_CONFIRM"
+
+          # 3. split string, no confirm token -- caught only by the default-deny rule
+          cat > BchInjected.qml <<'QML'
+          import Quickshell
+          import Quickshell.Io
+          Item { id: root
+            property var verb: ["sw" + "eep"]
+            Process { id: p; command: ["bch-bot", root.verb] }
+          }
+          QML
+          check "split-string subcommand with no literal argv"
+
+          # 4. a shell escape, on one line (the ^-anchor gap)
+          cat > BchInjected.qml <<'QML'
+          import Quickshell
+          import Quickshell.Io
+          Item { Process { id: p; command: ["sh", "-c", "bch-bot sweep"] } }
+          QML
+          check "shell escape"
+
+          # 5. an absolute path to another program
+          cat > BchInjected.qml <<'QML'
+          import Quickshell
+          import Quickshell.Io
+          Item { Process { id: p; command: ["/bin/sh", "-c", "rm -rf ~"] } }
+          QML
+          check "absolute program path"
+
+          # 6. a process that never names the CLI
+          cat > BchInjected.qml <<'QML'
+          import Quickshell
+          import Quickshell.Io
+          Item { Process { id: p; command: ["whatever", "arg"] } }
+          QML
+          check "unidentified process"
+
+          # 7. a second process declaration beside a legitimate one
+          printf '\nProcessExecution { id: x }\n' >> BchBalanceWidget.qml
+          check "unchecked second process beside a good one"
+
+          # 8. send reachable from the widget
+          printf '\n// run(["bch-bot", "send"], "x")\n' >> BchBalanceWidget.qml
+          check "send reachable outside the panel"
+
+          # 9. the confirm button ungated
+          sed -i 's/enabled: root.sendPreview !== null \&\& !root.sendConfirmed \&\& root.status !== "busy"/enabled: true/' BchWalletPanel.qml
+          check "confirm button not gated on a preview"
+
+          # 10. a reference to the wallet file
+          printf '\n// root.src = "wallet.json"\n' >> BchWalletPanel.qml
+          check "wallet.json reference"
+
+          # 11. a value-moving command added to the panel itself
+          printf '\n// run(["bch-bot", "sweep"], "x")\n' >> BchWalletPanel.qml
+          check "sweep added to the panel"
+
+          # 12. an undeclared kind in the manifest
+          python3 -c "import json;d=json.load(open('manifest.json'));d['kinds']=['bar-widget','panel'];json.dump(d,open('manifest.json','w'),indent=2)"
+          check "undeclared plugin kind"
+
+          if [ "$failures" -gt 0 ]; then
+            echo "::error::$failures known bypass(es) were not rejected"
             exit 1
           fi
-          echo "gate correctly rejected the split-string broadcast"
+          echo "all 12 known bypasses rejected"
 
       - name: QML parses
         run: |

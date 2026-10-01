@@ -135,11 +135,71 @@ for f in $QML_FILES; do
   # Strip line and block comments so a type named in prose does not trip the
   # rule; the check is about what the code can do, not what it says.
   body=$(sed -e 's://.*::' "$f" | perl -0777 -pe 's{/\*.*?\*/}{}gs')
-  if printf '%s' "$body" | grep -qE '^[[:space:]]*(Process|ProcessExecution|Command)[[:space:]]*\{'; then
-    # A Process is allowed here only if every command it can build is a
-    # read-only bch-bot subcommand. Check the literals the file can actually
-    # name: if a bch-bot invocation appears with a subcommand that is not
-    # read-only, this file can move money and must not be trusted to do so.
+  # The type name must appear anywhere a declaration can start, NOT only at the
+  # start of a line. An earlier version anchored with ^, which meant the
+  # single-line form
+  #
+  #     Item { Process { command: ["sh", "-c", "bch-bot sweep"] } }
+  #
+  # never matched, and a shell escape hid inside it passed the gate. The ^ was
+  # cosmetic -- it only made the output prettier -- and it silently exempted the
+  # densest way to write the thing being banned. Anchor on a word boundary and
+  # require the type to be followed by an optional id and an opening brace.
+  if printf '%s' "$body" | grep -qE '(^|[^A-Za-z0-9_])(Process|ProcessExecution|Command)[[:space:]]*(\{|[[:space:]]+id[[:space:]]*:)'; then
+    # Count the process declarations, not just their presence. An earlier
+    # version entered this block once for the file and then checked the file as
+    # a whole, so appending a SECOND ProcessExecution to a file that already had
+    # a legitimate bch-bot balance Process was never examined on its own -- the
+    # file passed because the first declaration satisfied the rule. A gate that
+    # checks "does this file contain a good one" instead of "is every one of
+    # them good" is trivially bypassed by adding a bad one next to a good one.
+    decl_count=$(printf '%s' "$body" | grep -oE '(^|[^A-Za-z0-9_])(Process|ProcessExecution|Command)[[:space:]]*(\{|[[:space:]]+id[[:space:]]*:)' | wc -l | tr -d ' ')
+    good_count=$(printf '%s' "$body" | grep -oE '"bch-bot"[[:space:]]*,[[:space:]]*"(balance|address|history|utxos|quote|version|help)"' | wc -l | tr -d ' ')
+    if [ "$good_count" -lt "$decl_count" ]; then
+      echo "SAFETY: $f declares $decl_count process(es) but only $good_count run a literal read-only bch-bot command" >&2
+      echo "         every process in a non-panel file must be accounted for; a good" >&2
+      echo "         declaration does not excuse an unchecked one beside it." >&2
+      fail "every process outside the panel must run a literal read-only command"
+    fi
+    # A Process exists here. Three things must hold, and all three are required:
+    #
+    #   1. The ONLY program it can invoke is bch-bot.
+    #   2. Every subcommand it names is read-only.
+    #   3. BCH_CONFIRM is not constructible here, so the process can be
+    #      promoted to a broadcast at runtime.
+    #
+    # Rule 1 is what closes the split-string bypass. An earlier draft only
+    # looked for literal ["bch-bot","sweep"] pairs, so this defeated it while
+    # still being caught by rule 3:
+    #
+    #     property var verb: ["sw" + "eep"]
+    #     process.command: ["bch-bot", root.verb]
+    #
+    # That is a value-moving process with no literal pair for the grep to find.
+    # Checking the *program* rather than the argv shape catches it, because the
+    # program is still the literal "bch-bot" even when the subcommand is built
+    # at runtime. It cannot fully solve dynamic QML -- nothing can, short of a
+    # type system -- but it moves the boundary from "describe the call" to
+    # "constrain the capability", which is the improvement that matters.
+
+    # --- rule 3: no confirm token -------------------------------------------
+    if printf '%s' "$body" | grep -qE 'BCH_|CONFIRM'; then
+      echo "SAFETY: $f references BCH_CONFIRM" >&2
+      echo "         the broadcast confirmation token is confined to the panel; building one" >&2
+      echo "         here is how a read-only argv gets promoted to a broadcast." >&2
+      fail "the broadcast confirmation token is confined to the panel"
+    fi
+
+    # --- rule 1: only the CLI, never a shell --------------------------------
+    # Anything that can execute an arbitrary program is out. `sh -c`, `env`,
+    # and a bare interpolated path all open a way past the subcommand allow-list.
+    if printf '%s' "$body" | grep -qE '"/(bin|usr)/|"(sh|bash|zsh|env|shellscript|xdg-open|open)"'; then
+      echo "SAFETY: $f can invoke something other than the bch-bot CLI" >&2
+      echo "         a shell or an absolute path bypasses the subcommand allow-list." >&2
+      fail "only the bch-bot CLI may be invoked outside the panel"
+    fi
+
+    # --- rule 2: read-only subcommands --------------------------------------
     bad=$(printf '%s' "$body" | grep -oE '"bch-bot"[[:space:]]*,[[:space:]]*"[a-z-]+"' \
           | grep -oE '"[a-z-]+"[[:space:]]*$' | tr -d '" ' \
           | grep -vE '^(balance|address|history|utxos|quote|version|help)$' || true)
@@ -149,12 +209,31 @@ for f in $QML_FILES; do
       echo "         key and broadcast behind the checked confirm paths." >&2
       fail "value-moving commands are confined to the panel"
     fi
-    # BCH_CONFIRM must never be constructible outside the panel either, even
-    # by concatenation -- otherwise a read-only-looking argv can be promoted to
-    # a broadcast at runtime.
-    if printf '%s' "$body" | grep -qE 'BCH_|CONFIRM'; then
-      echo "SAFETY: $f references BCH_CONFIRM" >&2
-      fail "the broadcast confirmation token is confined to the panel"
+
+    # --- a Process with no bch-bot reference at all is unexplained ------------
+    # A process that runs something unidentified is not a read-only balance read.
+    if ! printf '%s' "$body" | grep -q 'bch-bot'; then
+      echo "SAFETY: $f spawns a process but never references the bch-bot CLI" >&2
+      fail "a process outside the panel must run the CLI and say so"
+    fi
+
+    # --- rule 4: the argv must be a literal, or provably a read-only one ------
+    # Rules 1-3 all inspect literals. This closes the remaining hole: a process
+    # that names no literal subcommand at all, so the allow-list in rule 2 had
+    # nothing to check, and the value is assembled at runtime --
+    #
+    #     Process { command: ["bch-bot", root.verb] }   // verb = "sw"+"eep"
+    #
+    # The only argv the panel is allowed to build here is the read-only balance
+    # read, written literally. Anything that is not that exact shape is refused.
+    # This is default-deny, which is the only posture that holds against code
+    # the gate cannot fully parse.
+    if ! printf '%s' "$body" | grep -qE '"bch-bot"[[:space:]]*,[[:space:]]*"(balance|address|history|utxos|quote|version|help)"'; then
+      echo "SAFETY: $f builds a bch-bot argv that is not a literal read-only command" >&2
+      echo "         the only command a non-panel file may run is a literal read-only" >&2
+      echo "         one. An argv assembled at runtime cannot be checked, and an" >&2
+      echo "         uncheckable value-moving command is refused rather than assumed safe." >&2
+      fail "a non-panel process must run a literal read-only bch-bot command"
     fi
   fi
 done
