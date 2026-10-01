@@ -64,6 +64,13 @@ Item {
   property string swapSell: ""
   property string swapBuy: ""
   property string swapAmount: ""
+  // The minimum acceptable output, in the BUY asset's base units (or a decimal
+  // amount the CLI converts). Empty means no floor, which is the router's
+  // default and is NOT safe: the router is documented as beta, and a quote can
+  // go stale between the preview and the build. Without a floor the only
+  // protection is that the build matches the quote, and both numbers come from
+  // the router.
+  property string swapMinOutput: ""
   property var swapQuote: null
 
   // Which flow a running command belongs to, so one Process can serve all of
@@ -148,17 +155,43 @@ Item {
       "send-confirm", ["BCH_CONFIRM=yes"])
   }
 
+  // The slippage floor, as a CLI argument, or null when the user has not set
+  // one. The CLI accepts a bare integer of base units or a decimal amount with
+  // a BCH-style unit, exactly like `send`; anything else is rejected there, so
+  // a typo fails at the CLI rather than being silently coerced to "no floor".
+  function minOutputArg() {
+    if (!swapMinOutput) return null
+    var v = swapMinOutput.trim()
+    if (v.length === 0) return null
+    return v
+  }
+
   function getQuote() {
     if (!swapSell || !swapBuy || !swapAmount)
       return fail("enter the asset to sell, the asset to buy, and an amount")
-    run(["bch-bot", "swap", swapSell.trim(), swapBuy.trim(), swapAmount.trim(),
-      "--quote-only"], "swap-quote")
+    var args = ["bch-bot", "swap", swapSell.trim(), swapBuy.trim(), swapAmount.trim(),
+      "--quote-only"]
+    // Carry the floor into the quote so the number the user reads is the number
+    // that will be enforced. A floor applied only at execution would let the
+    // preview show an output the trade is then free to fall below.
+    var floor = minOutputArg()
+    if (floor) args.push("--min-output", floor)
+    run(args, "swap-quote")
   }
 
   function executeSwap() {
     if (!swapQuote) return
-    run(["bch-bot", "swap", swapSell.trim(), swapBuy.trim(), swapAmount.trim()],
-      "swap-execute", ["BCH_CONFIRM=yes"])
+    var args = ["bch-bot", "swap", swapSell.trim(), swapBuy.trim(), swapAmount.trim()]
+    // The quote is only a promise if the floor travels with it. Re-send the
+    // same floor at execution: without this the build is only checked against
+    // the quote, and the quote is a snapshot that may already be stale.
+    var floor = minOutputArg()
+    if (floor) args.push("--min-output", floor)
+    // BCH_CONFIRM goes through the `env` parameter, never appended to argv --
+    // as a trailing argument it would be read as a fourth positional and
+    // silently ignored, which would look exactly like a swap that refuses to
+    // broadcast. check-wallet-safety.sh requires this shape.
+    run(args, "swap-execute", ["BCH_CONFIRM=yes"])
   }
 
   // Route one command's stdout to the flow that asked for it. A single Process
@@ -515,6 +548,36 @@ Item {
         placeholderText: "0.01"
         text: root.swapAmount
         onTextChanged: { root.swapAmount = text; root.swapQuote = null }
+      }
+
+      // The slippage floor. Without it the router's quoted output is only a
+      // snapshot, and the router is documented as beta -- a build can differ
+      // from the quote it was priced from. The floor is the one number the
+      // build is checked against that does not come from the router.
+      Text {
+        text: "Minimum acceptable output (base units, optional)"
+        color: root.dim
+        font.pixelSize: Style.font.bodySmall
+        Layout.topMargin: Style.space(6)
+      }
+
+      TextField {
+        Layout.fillWidth: true
+        // PUSD has 2 decimals, so 36000 means 360.00 PUSD. Say so, because a
+        // raw base-unit count is exactly the kind of number a user reads as
+        // something else.
+        placeholderText: "e.g. 36000 for 360.00 PUSD"
+        text: root.swapMinOutput
+        onTextChanged: { root.swapMinOutput = text; root.swapQuote = null }
+      }
+
+      Text {
+        text: "Leave empty to accept whatever the router builds. The quote is a"
+              + " snapshot, and the router is beta."
+        color: root.dim
+        font.pixelSize: Style.font.bodySmall
+        wrapMode: Text.WordWrap
+        Layout.topMargin: Style.space(2)
       }
 
       RowLayout {
