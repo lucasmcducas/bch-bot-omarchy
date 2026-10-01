@@ -55,6 +55,15 @@ Panel {
   property string swapAmount: ""
   property var swapQuote: null
 
+  // Which flow a running command belongs to, so one Process can serve all of
+  // them: balance | address | send-preview | send-confirm | swap-quote |
+  // swap-execute.
+  property string pendingKind: ""
+
+  // Captured stdout, read once the process has exited. A Process has no
+  // user-defined properties, so the result cannot be stashed on it.
+  property string lastStdout: ""
+
   // ------------------------------------------------------------------ helpers
 
   readonly property color fg: barForeground
@@ -69,20 +78,23 @@ Panel {
     swapQuote = null
   }
 
-  // Runs a bch-bot subcommand and hands stdout to `onDone`. `env` is a list
-  // of KEY=VALUE pairs prefixed onto the command with `env(1)`, which keeps
-  // BCH_CONFIRM visible in the command line rather than hidden in a side
-  // channel.
-  function run(cmd, onDone, env) {
+  // Runs a bch-bot subcommand and routes the result to `applyResult`.
+  // `env` is a list of KEY=VALUE pairs prefixed onto the command with env(1),
+  // which keeps BCH_CONFIRM visible in the command line rather than hidden in
+  // a side channel.
+  //
+  // The result is a tagged union rather than a callback: a callback stashed on
+  // the Process would need a property the type does not have, and a plain
+  // string cannot say which view it belongs to.
+  function run(cmd, kind, env) {
     if (status === "busy") return
     status = "busy"
     errorMessage = ""
+    pendingKind = kind
     var full = cmd.slice()
     if (env && env.length > 0) full = ["env"].concat(env).concat(cmd)
-    var proc = process
-    proc._onDone = onDone
-    proc.command = full
-    proc.running = true
+    process.command = full
+    process.running = true
   }
 
   function fail(message) {
@@ -103,22 +115,11 @@ Panel {
   // ------------------------------------------------------------------ actions
 
   function loadBalance() {
-    run(["bch-bot", "balance"], function (text) {
-      var parsed = root.parseJson(text)
-      if (!parsed) return root.fail("could not read the balance from bch-bot")
-      root.balanceBch = String(parsed.bch_confirmed || "0.00000000")
-      root.status = "ok"
-    })
+    run(["bch-bot", "balance"], "balance")
   }
 
   function loadAddress() {
-    run(["bch-bot", "address", "--json"], function (text) {
-      var parsed = root.parseJson(text)
-      if (!parsed || !parsed.address) return root.fail("could not derive a receiving address")
-      root.receiveAddress = String(parsed.address)
-      root.receiveNetwork = String(parsed.network || "")
-      root.status = "ok"
-    })
+    run(["bch-bot", "address", "--json"], "address")
   }
 
   // Dry run first: this shows the signed transaction and its network fee
@@ -126,49 +127,68 @@ Panel {
   function previewSend() {
     if (!sendTo || !sendAmount) return fail("enter a recipient address and an amount")
     sendConfirmed = false
-    run(["bch-bot", "send", sendTo.trim(), sendAmount.trim()], function (text) {
-      var parsed = root.parseJson(text)
-      if (!parsed) return fail("send preview failed — is the recipient address valid?")
-      root.sendPreview = parsed
-      root.status = "ok"
-    })
+    run(["bch-bot", "send", sendTo.trim(), sendAmount.trim()], "send-preview")
   }
 
   // The only place in this plugin that can broadcast, and it does so by
   // invoking the same CLI with the CLI's own gate set. QML cannot skip it.
   function confirmSend() {
-    run(["bch-bot", "send", sendTo.trim(), sendAmount.trim()], function (text) {
-      var parsed = root.parseJson(text)
-      if (!parsed) return fail("broadcast failed")
-      root.sendPreview = parsed
-      root.sendConfirmed = true
-      root.status = "ok"
-      root.loadBalance()
-    }, ["BCH_CONFIRM=yes"])
+    run(["bch-bot", "send", sendTo.trim(), sendAmount.trim()],
+      "send-confirm", ["BCH_CONFIRM=yes"])
   }
 
   function getQuote() {
     if (!swapSell || !swapBuy || !swapAmount)
       return fail("enter the asset to sell, the asset to buy, and an amount")
     run(["bch-bot", "swap", swapSell.trim(), swapBuy.trim(), swapAmount.trim(),
-      "--quote-only"], function (text) {
-      var parsed = root.parseJson(text)
-      if (!parsed) return fail("no route found for that trade")
-      root.swapQuote = parsed
-      root.status = "ok"
-    })
+      "--quote-only"], "swap-quote")
   }
 
   function executeSwap() {
     if (!swapQuote) return
     run(["bch-bot", "swap", swapSell.trim(), swapBuy.trim(), swapAmount.trim()],
-      function (text) {
-        var parsed = root.parseJson(text)
-        if (!parsed) return fail("swap failed — the router may have rejected the trade")
-        root.swapQuote = parsed
-        root.status = "ok"
-        root.loadBalance()
-      }, ["BCH_CONFIRM=yes"])
+      "swap-execute", ["BCH_CONFIRM=yes"])
+  }
+
+  // Route one command's stdout to the flow that asked for it. A single Process
+  // serves every view; `pendingKind` is what keeps their results apart.
+  function applyResult(kind, text) {
+    var parsed = parseJson(text)
+    if (kind === "balance") {
+      if (!parsed) return fail("could not read the balance from bch-bot")
+      balanceBch = String(parsed.bch_confirmed || "0.00000000")
+      return
+    }
+    if (kind === "address") {
+      if (!parsed || !parsed.address) return fail("could not derive a receiving address")
+      receiveAddress = String(parsed.address)
+      receiveNetwork = String(parsed.network || "")
+      return
+    }
+    if (kind === "send-preview") {
+      if (!parsed) return fail("send preview failed — is the recipient address valid?")
+      sendPreview = parsed
+      return
+    }
+    if (kind === "send-confirm") {
+      if (!parsed) return fail("broadcast failed")
+      sendPreview = parsed
+      sendConfirmed = true
+      loadBalance()
+      return
+    }
+    if (kind === "swap-quote") {
+      if (!parsed) return fail("no route found for that trade")
+      swapQuote = parsed
+      return
+    }
+    if (kind === "swap-execute") {
+      if (!parsed) return fail("swap failed — the router may have rejected the trade")
+      swapQuote = parsed
+      loadBalance()
+      return
+    }
+    fail("unexpected result")
   }
 
   // ----------------------------------------------------------------- process
@@ -185,7 +205,7 @@ Panel {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: function (text) {
-        if (process._onDone) process._onDone(text)
+        root.lastStdout = String(text || "")
       }
     }
 
@@ -202,16 +222,20 @@ Panel {
     }
 
     onExited: function (exitCode) {
-      if (exitCode === 0) {
-        if (root.status === "busy") root.status = "ok"
+      var kind = root.pendingKind
+      root.pendingKind = ""
+      if (exitCode !== 0) {
+        // bch-bot prints usage to stdout on a bad-argument error, so an error
+        // with no useful message is almost always a bad field.
+        var detail = root.errorMessage || ("bch-bot exited " + exitCode)
+        root.status = "error"
+        root.errorMessage = detail
+        if (/no wallet/i.test(detail)) root.reset()
         return
       }
-      // bch-bot prints usage to stdout on a bad-argument error, so an error
-      // with no useful message is almost always a bad field.
-      var detail = root.errorMessage || ("bch-bot exited " + exitCode)
-      root.status = "error"
-      root.errorMessage = detail
-      if (/no wallet/i.test(detail)) root.reset()
+      root.applyResult(kind, root.lastStdout)
+      root.lastStdout = ""
+      if (root.status === "busy") root.status = "ok"
     }
   }
 
