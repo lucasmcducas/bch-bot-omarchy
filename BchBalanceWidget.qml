@@ -158,10 +158,12 @@ BarWidget {
   //   right click    -> open the wallet panel (receive / send / swap)
   //   middle click   -> open the CLI in a floating terminal
   //
-  // The panel is summoned through `omarchy-shell shell toggle <module>`,
-  // which is the first-party convention (see Microphone.qml). Going through
-  // the shell rather than instantiating a second copy of the panel ourselves
-  // means one instance, one wallet prompt, one set of pending state.
+  // `omarchy-shell shell summon <id>` is the call that actually opens a
+  // panel: it sets the id in the shell's openPanelIds set, which is what
+  // activates the panel's Loader. `shell toggle <id>` is a different verb and
+  // does nothing for a third-party panel -- the first-party bar widgets that
+  // use `toggle` are talking to their own IpcHandler target (e.g.
+  // omarchy.audio), not summoning a loader.
   function handlePress(pressedButton) {
     if (pressedButton === Qt.MiddleButton) {
       if (root.bar)
@@ -170,7 +172,7 @@ BarWidget {
     }
     if (pressedButton === Qt.RightButton) {
       if (root.bar)
-        root.bar.run("omarchy-shell shell toggle " + root.moduleName)
+        root.bar.run("omarchy-shell shell summon " + root.moduleName)
       return
     }
     root.refresh()

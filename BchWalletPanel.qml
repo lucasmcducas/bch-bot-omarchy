@@ -20,6 +20,11 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Ui
+// Style and Color are singletons in qs.Commons, not qs.Ui. Without this import
+// every Style.* / Color.* reference throws a ReferenceError at load and the
+// panel renders empty -- with no load-failure message, because the file itself
+// parsed fine.
+import qs.Commons
 
 Panel {
   id: root
