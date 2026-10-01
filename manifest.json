@@ -6,11 +6,10 @@
   "author": "Luke McDucas (via Jav)",
   "license": "MIT",
   "description": "Self-custodial Bitcoin Cash (BCH) wallet in your Omarchy bar — live balance, plus receive, send and Cauldron swap.",
-  "kinds": ["bar-widget", "panel"],
+  "kinds": ["bar-widget"],
   "activation": "on-demand",
   "entryPoints": {
-    "barWidget": "BchBalanceWidget.qml",
-    "panel": "BchWalletPanel.qml"
+    "barWidget": "BchBalanceWidget.qml"
   },
   "barWidget": {
     "displayName": "BCH Balance",

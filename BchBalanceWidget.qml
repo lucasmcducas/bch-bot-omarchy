@@ -155,15 +155,19 @@ BarWidget {
   // Shared by both orientations.
   //
   //   left click     -> refresh the balance
-  //   right click    -> open the wallet panel (receive / send / swap)
+  //   right click    -> open/close the wallet panel (receive / send / swap)
   //   middle click   -> open the CLI in a floating terminal
   //
-  // `omarchy-shell shell summon <id>` is the call that actually opens a
-  // panel: it sets the id in the shell's openPanelIds set, which is what
-  // activates the panel's Loader. `shell toggle <id>` is a different verb and
-  // does nothing for a third-party panel -- the first-party bar widgets that
-  // use `toggle` are talking to their own IpcHandler target (e.g.
-  // omarchy.audio), not summoning a loader.
+  // The panel is hosted here rather than loaded as a separate `panel` kind: the
+  // bar looks for a panel inside its own slot (Bar.qml findPanelWidget walks
+  // moduleSlots), so a plugin whose bar-widget entry point is a different file
+  // gets a bar widget and an unreachable panel.
+  //
+  // `panelOpen` mirrors the KeyboardPanel's own state through a binding, so
+  // right-click toggles what the panel is actually doing -- including a close
+  // triggered by clicking outside it.
+  readonly property bool panelOpen: walletPanel.open === true
+
   function handlePress(pressedButton) {
     if (pressedButton === Qt.MiddleButton) {
       if (root.bar)
@@ -171,8 +175,8 @@ BarWidget {
       return
     }
     if (pressedButton === Qt.RightButton) {
-      if (root.bar)
-        root.bar.run("omarchy-shell shell summon " + root.moduleName)
+      if (root.panelOpen) walletPanel.open = false
+      else walletPanel.open = true
       return
     }
     root.refresh()
@@ -186,6 +190,36 @@ BarWidget {
     repeat: true
     triggeredOnStart: false
     onTriggered: root.refresh()
+  }
+
+  // ------------------------------------------------------------------ panel
+
+  // The interactive surface lives in a KeyboardPanel, which is the layer-shell
+  // popup the shell uses for every bar-anchored panel (see
+  // shell/plugins/panels/network/Panel.qml). It supplies the window, the
+  // anchored-to-icon positioning, outside-click dismissal with a region mask
+  // that leaves the bar clickable, the fade, and popout coordination.
+  //
+  // A separate `panel` kind does NOT work: the bar looks for a panel INSIDE its
+  // own slot (Bar.qml findPanelWidget walks moduleSlots and requires
+  // open/close/opened on the slot's activeItem). A plugin whose bar-widget
+  // entry point is a different file than its panel ends up with a bar widget
+  // and an unreachable panel.
+  KeyboardPanel {
+    id: walletPanel
+    anchorItem: button
+    owner: root
+    bar: root.bar
+    open: root.opened
+    focusTarget: walletContent
+    contentWidth: Style.space(360)
+    contentHeight: walletContent.implicitHeight + Style.space(32)
+
+    BchWalletPanel {
+      id: walletContent
+      width: parent.width
+      closeRequested: function() { walletPanel.open = false }
+    }
   }
 
   // ------------------------------------------------------------------ content

@@ -26,11 +26,17 @@ import qs.Ui
 // parsed fine.
 import qs.Commons
 
-Panel {
+// The CONTENT of the wallet panel. It is instantiated inside the bar widget's
+// KeyboardPanel, which owns the window and the open/close lifecycle, so this
+// file is a plain Item rather than a Panel: a Panel here would register a
+// second IPC handler for the same target and a second PanelController.
+Item {
   id: root
-  moduleName: "io.github.lucasmcducas.bch-wallet"
-  ipcTarget: "io.github.lucasmcducas.bch-wallet"
-  manageIpc: true
+  implicitHeight: layout.implicitHeight
+
+  // Set by the host widget to close the popup. A plain Item has no close() of
+  // its own -- the KeyboardPanel does -- so the host injects the callback.
+  property var closeRequested: null
 
   // ------------------------------------------------------------------- state
 
@@ -242,6 +248,7 @@ Panel {
   // ------------------------------------------------------------------ layout
 
   ColumnLayout {
+    id: layout
     anchors.fill: parent
     anchors.margins: Style.space(16)
     spacing: Style.space(12)
@@ -574,7 +581,9 @@ Panel {
 
       Button {
         text: "Close"
-        onClicked: root.close()
+        // The KeyboardPanel hosting this item owns the window, so closing is
+        // delegated up rather than called here.
+        onClicked: if (root.closeRequested) root.closeRequested()
       }
     }
   }
