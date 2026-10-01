@@ -152,13 +152,25 @@ BarWidget {
     balanceProcess.running = true
   }
 
-  // Shared by both orientations: middle-click opens the CLI in a floating
-  // terminal (the first-party convention, see SystemUpdate), anything else
-  // refreshes.
+  // Shared by both orientations.
+  //
+  //   left click     -> refresh the balance
+  //   right click    -> open the wallet panel (receive / send / swap)
+  //   middle click   -> open the CLI in a floating terminal
+  //
+  // The panel is summoned through `omarchy-shell shell toggle <module>`,
+  // which is the first-party convention (see Microphone.qml). Going through
+  // the shell rather than instantiating a second copy of the panel ourselves
+  // means one instance, one wallet prompt, one set of pending state.
   function handlePress(pressedButton) {
     if (pressedButton === Qt.MiddleButton) {
       if (root.bar)
         root.bar.run("omarchy-launch-floating-terminal-with-presentation bch-bot balance")
+      return
+    }
+    if (pressedButton === Qt.RightButton) {
+      if (root.bar)
+        root.bar.run("omarchy-shell shell toggle " + root.moduleName)
       return
     }
     root.refresh()

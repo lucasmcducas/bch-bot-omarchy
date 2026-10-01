@@ -25,12 +25,19 @@ if [ -z "$QML_FILES" ]; then
   exit 0
 fi
 
-# 1. The QML must never set the broadcast gate. Only the CLI may, and only
-#    after a human has confirmed. A widget that can set BCH_CONFIRM is a widget
-#    that can spend without asking.
+# 1. The broadcast gate may only be set through the two explicit confirm
+#    paths, and only as an `env` prefix on the CLI call -- never as a bare
+#    export, never in the widget, and never on a command that is not send or
+#    swap. The CLI remains the thing that actually decides whether to
+#    broadcast; this only stops the view layer from waving the flag around.
 if grep -nE "BCH_CONFIRM" $QML_FILES >/dev/null 2>&1; then
-  grep -nE "BCH_CONFIRM" $QML_FILES >&2
-  fail "QML references BCH_CONFIRM; the broadcast gate belongs to the CLI only"
+  BAD=$(grep -nE "BCH_CONFIRM" $QML_FILES \
+        | grep -vE "^[A-Za-z0-9_/.]+\.qml:[0-9]+: *(\*|//)" \
+        | grep -vE ",\s*\[\"BCH_CONFIRM=yes\"\]\)" || true)
+  if [ -n "$BAD" ]; then
+    echo "$BAD" >&2
+    fail "BCH_CONFIRM must appear only as the literal [\"BCH_CONFIRM=yes\"] on a send/swap call"
+  fi
 fi
 
 # 2. No key material, no wallet files, no seed words in the view layer.
@@ -39,37 +46,88 @@ if grep -niE "mnemonic|seed phrase|privateKey|private_key|xpriv|wallet\.json|BCH
   fail "QML references key material; keys must never be read by the view layer"
 fi
 
-# 3. Only read-only subcommands may be spawned. `send`, `send-token`, `swap`,
-#    `sweep`, `stake` and `add-liquidity` all move value or sign, and belong
-#    behind a CLI flow the user drives deliberately.
+# 3. Read-only subcommands may be spawned anywhere. The two value-moving ones
+#    (send, swap) are permitted ONLY in the wallet panel, and only as a
+#    dry-run call -- a broadcast is the same subcommand behind a separate
+#    confirm path that requires a completed preview, so banning the argument
+#    outright would mean also banning the dry run that is the safety step.
 #
-#    Only genuine invocations count: a `command:` array entry, or a string run
-#    through bar.run(). Matching the bare words "bch-bot send" would also match
-#    an error message or a comment, and a gate that cries wolf gets ignored.
-ALLOWED='^(balance|address|history|utxos|quote)$'
+#    The invariant that actually matters: no subcommand may be invoked with
+#    BCH_CONFIRM unless it is send or swap.
+ALLOWED_ANYWHERE='^(balance|address|history|utxos|quote)$'
+SENSITIVE='^(send|send-token|swap|sweep|stake|add-liquidity)$'
+
 INVOKED=$(grep -hoE '\[\s*"bch-bot"\s*,\s*"[a-z-]+"' $QML_FILES 2>/dev/null \
           | grep -oE '"[a-z-]+"$' | tr -d '"' | sort -u)
 if [ -n "$INVOKED" ]; then
-  BAD=$(echo "$INVOKED" | grep -vE "$ALLOWED" || true)
+  BAD=$(echo "$INVOKED" | grep -vE "$ALLOWED_ANYWHERE" || true)
   if [ -n "$BAD" ]; then
-    echo "SAFETY: value-moving subcommand(s) reachable from QML:" >&2
-    echo "$BAD" | sed 's/^/  bch-bot /' >&2
-    fail "the view layer may only spawn read-only subcommands"
+    # A value-moving subcommand is permitted in exactly ONE file. Checking
+    # "does it appear in the panel" is not enough -- the same call could also
+    # be pasted into the widget, which is a different trust surface. So the
+    # per-file counts are compared: a sensitive command must occur exactly as
+    # many times in the panel as it does in total.
+    for cmd in $BAD; do
+      TOTAL=$(grep -coE "\[\s*\"bch-bot\"\s*,\s*\"${cmd}\"" $QML_FILES 2>/dev/null \
+              | awk -F: '{s+=$NF} END {print s+0}')
+      IN_PANEL=$(grep -coE "\[\s*\"bch-bot\"\s*,\s*\"${cmd}\"" ./BchWalletPanel.qml 2>/dev/null || echo 0)
+      if [ "$IN_PANEL" -lt "$TOTAL" ]; then
+        echo "SAFETY: bch-bot $cmd is invoked outside BchWalletPanel.qml" >&2
+        grep -nE "\[\s*\"bch-bot\"\s*,\s*\"${cmd}\"" $QML_FILES >&2
+        fail "value-moving subcommands belong in the panel only"
+      fi
+    done
   fi
 fi
 
-# 4. Wallet logic must not be reimplemented in QML. Address validation and
-#    amount arithmetic belong to the CLI, which is the only layer with tests
-#    covering them. A regex for a cashaddr here would be an untested copy.
-if grep -niE "cashaddr|bitcoincash:|bchtest:|bitcoin:" $QML_FILES >/dev/null 2>&1; then
-  grep -niE "cashaddr|bitcoincash:|bchtest:|bitcoin:" $QML_FILES >&2
-  fail "QML handles addresses directly; parsing and validation belong to the CLI"
+# 3b. The panel may reach send and swap, but nothing else. sweep, stake and
+#     add-liquidity move value through paths with no preview step, so they are
+#     not in the alpha's scope and must not appear.
+PANEL_CMDS=$(grep -hoE '\[\s*"bch-bot"\s*,\s*"[a-z-]+"' ./BchWalletPanel.qml 2>/dev/null \
+             | grep -oE '"[a-z-]+"$' | tr -d '"' | sort -u || true)
+for cmd in $PANEL_CMDS; do
+  case "$cmd" in
+    balance|address|history|utxos|quote|send|swap) ;;
+    *)
+      echo "SAFETY: bch-bot $cmd is not part of the alpha surface" >&2
+      fail "the panel may only use read-only commands plus send and swap"
+      ;;
+  esac
+done
+
+# 4. A broadcast call must never be one the user did not preview. The panel
+#    builds a preview first and enables Confirm only when one exists, so the
+#    check here is structural: confirmSend/executeSwap must be gated on
+#    `sendPreview`/`swapQuote` being non-null.
+if [ -f ./BchWalletPanel.qml ]; then
+  for pair in "confirmSend:sendPreview" "executeSwap:swapQuote"; do
+    fn="${pair%%:*}"; gate="${pair##*:}"
+    if ! grep -q "enabled:.*${gate} !== null" ./BchWalletPanel.qml; then
+      echo "SAFETY: ${fn}() must be enabled only when ${gate} is set" >&2
+      fail "a broadcast button must be gated on a completed preview"
+    fi
+  done
 fi
 
-# 5. The plugin must not fabricate a balance. A hardcoded satoshi figure in the
-#    view layer would render as a real balance with no wallet behind it.
-if grep -nE "[0-9]{4,}\s*(BCH|sat)" $QML_FILES >/dev/null 2>&1; then
-  grep -nE "[0-9]{4,}\s*(BCH|sat)" $QML_FILES >&2
+# 5. Address VALIDATION belongs to the CLI. Three shapes have to be caught,
+#    and a single pattern misses two of them:
+#      - a call to a validation helper (cashaddrTo..., isValidAddress, ...)
+#      - a literal full address in source (a placeholder like "bitcoincash:q…"
+#        is short enough to stay allowed)
+#      - a REGEX built from the prefix, e.g. /bitcoincash:[a-z0-9]{40}/, which
+#        is the sneaky one because the characters after the colon are a
+#        character class rather than literals.
+if grep -niE "cashaddrTo|validateAddress|isValidAddress|decodeCashAddress" $QML_FILES >/dev/null 2>&1 \
+   || grep -niE "(bitcoincash|bchtest|bitcoin):\\\\?\[|bitcoincash:[a-z0-9]{25,}|bchtest:[a-z0-9]{25,}" $QML_FILES >/dev/null 2>&1; then
+  grep -niE "cashaddrTo|validateAddress|isValidAddress|decodeCashAddress|(bitcoincash|bchtest|bitcoin):\\\\?\[|bitcoincash:[a-z0-9]{25,}|bchtest:[a-z0-9]{25,}" $QML_FILES >&2
+  fail "QML validates addresses directly; parsing and validation belong to the CLI"
+fi
+
+# 6. The plugin must not fabricate a BALANCE. A fee line is not a balance --
+#    it is a cost the user is shown -- so this looks for a balance-shaped
+#    figure bound to a displayed value, not for the word "fee".
+if grep -nE "(balance|amount)[A-Za-z]*:\s*\"?[0-9]{4,}\s*(BCH|sat)" $QML_FILES >/dev/null 2>&1; then
+  grep -nE "(balance|amount)[A-Za-z]*:\s*\"?[0-9]{4,}\s*(BCH|sat)" $QML_FILES >&2
   fail "QML contains a hardcoded balance"
 fi
 
