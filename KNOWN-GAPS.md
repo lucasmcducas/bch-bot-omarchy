@@ -49,3 +49,50 @@ transaction the user saw in the preview is *not* the transaction that gets
 broadcast — only the outputs and the fee total are guaranteed to match. The
 gate is `verifyBuildAgainstQuote`-shaped for swaps, but the send path has no
 equivalent "same inputs, same outputs" assertion across the two calls.
+
+## 4. Live infra: broadcast.cauldron.quest is down — UNFIXED, external
+
+Measured 2026-10-01 from both hosts.
+
+| Endpoint | State |
+|---|---|
+| `indexer.riften.net` (HTTPS) | reachable — `resolveToken` works live |
+| `router.riften.net` (WSS) | reachable — **live quotes work** |
+| `rostrum.cauldron.quest:50004` | TCP OK |
+| `broadcast.cauldron.quest/broadcast` | **TLS handshake fails** |
+
+The broadcast host answers TCP on 443 and then fails the handshake:
+`openssl s_client` reports `no peer certificate available`, and curl reports
+`tlsv1 alert internal error` in 0.1s. That is the server's TLS config, not our
+network — the A record (89.106.200.1) resolves fine and `router.riften.net` on
+the same Cloudflare range serves normally.
+
+**Impact:** quote works, broadcast does not. A funded end-to-end swap test
+cannot complete until this is fixed upstream. `BCH_CAULDRON_BROADCAST` overrides
+the URL, so there is no code change needed once the host is healthy again.
+
+## 5. `priceBefore` disagrees with `outputAmount` by ~89% — UNFIXED, external
+
+A live quote for 1 BCH → PUSD returned:
+
+```
+inputAmount   99999735   (0.99999735 BCH)
+outputAmount  36141      (361.41 PUSD, PUSD has 2 decimals)
+priceBefore   3434.87
+poolCount     68
+```
+
+`outputAmount / inputAmount` = **361.41**, but `priceBefore` says **3434.87** —
+a factor of ~9.5x apart. The output is the trustworthy number: the ratio is
+stable across input sizes (0.1 / 1 / 2 BCH all give ~360-362), and the reverse
+quote agrees on the same order of magnitude.
+
+`priceBefore` is a straight pass-through of the router's `market_pre_price`
+(`lib/router.mjs:179`), so the two fields are in **different units** and we are
+relaying the mismatch. Either the router reports the pool's marginal price in a
+different scale, or it is simply stale/wrong.
+
+**Impact today: none user-facing.** The panel does not render `price_before` or
+`price_after` (verified — no reference in the QML). It is only in `swap.mjs`'s
+`--quote-only` JSON, so a future UI that shows it would show a wrong number.
+Do not display either price field without first reconciling units.
