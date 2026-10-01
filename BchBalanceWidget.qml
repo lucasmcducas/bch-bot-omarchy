@@ -45,9 +45,6 @@ BarWidget {
 
   visible: slotVisible
 
-  implicitWidth: row.implicitWidth
-  implicitHeight: row.implicitHeight
-
   readonly property string tooltip: {
     if (status === "ok") {
       var lines = ["Bitcoin Cash — " + balanceBch + " BCH",
@@ -155,6 +152,18 @@ BarWidget {
     balanceProcess.running = true
   }
 
+  // Shared by both orientations: middle-click opens the CLI in a floating
+  // terminal (the first-party convention, see SystemUpdate), anything else
+  // refreshes.
+  function handlePress(pressedButton) {
+    if (pressedButton === Qt.MiddleButton) {
+      if (root.bar)
+        root.bar.run("omarchy-launch-floating-terminal-with-presentation bch-bot balance")
+      return
+    }
+    root.refresh()
+  }
+
   Component.onCompleted: refresh()
 
   Timer {
@@ -167,11 +176,27 @@ BarWidget {
 
   // ------------------------------------------------------------------ content
 
-  // Icon and label sit in an explicit row: the bar places each widget in its
-  // own slot, and a bare anchored Text has no row to sit in.
+  // The bar can be horizontal (top/bottom) or vertical (left/right), and the
+  // first-party widgets branch on `vertical` for exactly this reason. A Row of
+  // icon + label is right for a top bar and wrong for a left bar: there the
+  // slot is only as wide as the icon, so a sibling label gets pushed outside
+  // the 28px slot and clipped away. So the label is shown only when there is
+  // room for it, and the balance falls back to the tooltip on a vertical bar.
+  //
+  // `bar` is injected by the host after construction, so orientation is read
+  // through a binding rather than decided once in a handler.
+  readonly property bool isVertical: vertical
+
+  // On a vertical bar the slot is icon-width only, so the widget reports just
+  // the icon's size instead of a row that would be clipped.
+  implicitWidth: isVertical ? barSize : row.implicitWidth
+  implicitHeight: isVertical ? row.implicitHeight : barSize
+
   Row {
     id: row
+    visible: !root.isVertical
     spacing: 6
+    anchors.fill: parent
 
     BarIconButton {
       id: button
@@ -181,16 +206,7 @@ BarWidget {
       dimmed: root.status !== "ok"
       tooltipText: root.tooltip
 
-      onPressed: function(pressedButton) {
-        if (pressedButton === Qt.MiddleButton) {
-          // Middle-click is the first-party convention for opening the real
-          // app behind a widget (SystemUpdate launches omarchy-update).
-          if (root.bar)
-            root.bar.run("omarchy-launch-floating-terminal-with-presentation bch-bot balance")
-          return
-        }
-        root.refresh()
-      }
+      onPressed: root.handlePress
     }
 
     // Eight decimals is a wallet address, not a glanceable figure; truncating
@@ -198,7 +214,7 @@ BarWidget {
     Text {
       id: label
       visible: root.status === "ok"
-      anchors.verticalCenter: button.verticalCenter
+      anchors.verticalCenter: parent.verticalCenter
 
       text: root.balanceBch === "0.00000000" ? "0" : root.balanceBch
       color: root.bar ? root.bar.barForeground : "#ffffff"
@@ -207,5 +223,19 @@ BarWidget {
       elide: Text.ElideRight
       maximumLineCount: 1
     }
+  }
+
+  // Vertical bars get the icon alone; the balance is in the tooltip.
+  BarIconButton {
+    id: verticalButton
+    visible: root.isVertical
+    anchors.fill: parent
+    bar: root.bar
+    text: "💰"
+    active: root.status === "ok" && root.balanceBch !== "" && root.balanceBch !== "0.00000000"
+    dimmed: root.status !== "ok"
+    tooltipText: root.tooltip
+
+    onPressed: root.handlePress
   }
 }
