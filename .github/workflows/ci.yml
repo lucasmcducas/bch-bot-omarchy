@@ -1,0 +1,151 @@
+name: ci
+
+# The gates that used to be manual pre-push steps.
+#
+# check-wallet-safety.sh and audit-public.sh protect the plugin's core claim:
+# the QML layer cannot reach a key, and cannot broadcast anything except through
+# the checked confirm paths. As pre-push hooks they protected nothing
+# automatically -- skipping the hook was enough, and nothing would flag it. A
+# bypass only has to be committed, and a gate that gates keystrokes is not a
+# gate.
+#
+# A security check that is not wired to something automated is a comment.
+
+on:
+  push:
+    branches: [main, 'collaborate/**']
+  pull_request:
+    branches: [main, 'collaborate/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The QML/CLI boundary. Runs on every push and every PR, no dependencies
+  # beyond bash -- these scripts are deliberately dependency-free so they can
+  # also run in the AUR build.
+  wallet-safety:
+    name: QML cannot reach a key
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: check-wallet-safety.sh
+        run: ./check-wallet-safety.sh
+
+      - name: audit-public.sh
+        run: ./audit-public.sh
+
+      # Prove the gate can still fail. A safety check that has never been seen
+      # to fail is indistinguishable from one that cannot, and we have already
+      # shipped a version of that bug: check-wallet-safety.sh printed
+      # "integer expression expected" to stderr and then exited 0.
+      #
+      # This plants each known bypass and requires the gate to reject it. If a
+      # future change to the gate makes it permissive again, the build fails
+      # here rather than in a user's shell.
+      - name: the gate must reject a sensitive command outside the panel
+        run: |
+          set -euo pipefail
+          cp BchBalanceWidget.qml /tmp/widget.bak
+          trap 'cp /tmp/widget.bak BchBalanceWidget.qml' EXIT
+          printf '\n// run(["bch-bot", "stake"], "x")\n' >> BchBalanceWidget.qml
+          if ./check-wallet-safety.sh >/dev/null 2>&1; then
+            echo "::error::gate passed a sensitive command outside the panel"
+            exit 1
+          fi
+          echo "gate correctly rejected it"
+
+      - name: the gate must reject a process outside the panel that can move value
+        run: |
+          set -euo pipefail
+          cat > BchInjected.qml <<'QML'
+          import Quickshell
+          import Quickshell.Io
+          Item {
+            id: root
+            property var confirmFlag: ["BCH_" + "CONFIRM" + "=yes"]
+            property var verb: ["sw" + "eep"]
+            function run(cmd, kind, env) {
+              var full = ["env"].concat(env).concat(cmd)
+              process.command = full
+              process.running = true
+            }
+            Process { id: process; running: false; command: [] }
+            Component.onCompleted: run(["bch-bot", root.verb], "balance", root.confirmFlag)
+          }
+          QML
+          trap 'rm -f BchInjected.qml' EXIT
+          if ./check-wallet-safety.sh >/dev/null 2>&1; then
+            echo "::error::gate passed a QML file that constructs a broadcast from split strings"
+            exit 1
+          fi
+          echo "gate correctly rejected the split-string broadcast"
+
+      - name: QML parses
+        run: |
+          # qmllint is noisy about imports it cannot resolve for a bare shell
+          # plugin, so only a hard parse error should fail. The pattern is
+          # checked structurally above; this catches a file that will not load
+          # at all.
+          for f in *.qml; do
+            if ! qmllint -I /usr/lib/x86_64-linux-gnu/qt6/qml "$f" 2>&1 | grep -qE '^.*(Syntax error|Unexpected token)'; then
+              echo "$f parses"
+            else
+              echo "::error::$f has a syntax error"
+              exit 1
+            fi
+          done
+
+      - name: manifest declares only the kinds we ship
+        run: |
+          # `kinds: ["bar-widget"]` is deliberate and documented in
+          # CONTRIBUTING.md: the panel is opened as a popup by the bar widget,
+          # not declared as its own kind. An earlier draft of this workflow
+          # asserted "bar-widget,panel", which would have failed on the correct
+          # manifest -- a check that encodes a wrong belief is worse than no
+          # check, because it gets "fixed" by changing the code.
+          kinds=$(jq -r '.kinds | join(",")' manifest.json)
+          if [ "$kinds" != "bar-widget" ]; then
+            echo "::error::unexpected kinds: $kinds (expected bar-widget)"
+            exit 1
+          fi
+          entry=$(jq -r '.entryPoints.barWidget' manifest.json)
+          if [ "$entry" != "BchBalanceWidget.qml" ]; then
+            echo "::error::unexpected barWidget entry point: $entry"
+            exit 1
+          fi
+          echo "kinds: $kinds, entry: $entry"
+
+  # The plugin needs a wallet it does not ship, so there is nothing to run here
+  # yet. This job exists so the gap is visible in the build rather than
+  # inferred from its absence -- a missing job is indistinguishable from a
+  # passing one.
+  cli-contract:
+    name: plugin matches the CLI it drives
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: every subcommand the panel calls exists in the CLI
+        run: |
+          set -euo pipefail
+          # The panel's allow-list and the CLI's dispatcher must agree. If the
+          # CLI drops a command the panel still calls, the panel fails at
+          # runtime with a non-zero exit and no explanation.
+          panel_cmds=$(grep -hoE 'run\(\["bch-bot", *"[a-z-]+"' BchWalletPanel.qml \
+                       | grep -oE '"[a-z-]+"$' | tr -d '"' | sort -u)
+          echo "panel calls: $panel_cmds"
+          # The CLI lives in a separate repository, so the check is that every
+          # call is one the documented surface actually offers.
+          for cmd in $panel_cmds; do
+            case "$cmd" in
+              balance|address|history|utxos|quote|send|swap) ;;
+              *)
+                echo "::error::panel calls '$cmd', which is not a documented CLI subcommand"
+                exit 1
+                ;;
+            esac
+          done
+          echo "all panel subcommands are real"

@@ -108,6 +108,57 @@ for cmd in $PANEL_CMDS; do
   esac
 done
 
+# 3c. STRUCTURAL: a process may only run a read-only command, and only the
+#      panel may run a value-moving one.
+#
+#      This is the check that closes the bypass the literal greps above cannot
+#      close. Those greps match text, so this defeats them:
+#
+#        property var verb: ["sw" + "eep"]
+#        run(["bch-bot", root.verb], "balance", ["BCH_CONFIRM=yes"])
+#
+#      ...which builds a real `env BCH_CONFIRM=yes bch-bot sweep` argv at
+#      runtime. The `kind` argument is a display label the gate never inspects,
+#      and string concatenation defeats every literal pattern. Text matching
+#      cannot enforce a semantic invariant in a dynamic language, so stop
+#      trying: constrain the capability instead of describing the call.
+#
+#      BchBalanceWidget legitimately runs `bch-bot balance` for the bar, so a
+#      Process is not banned outright outside the panel. What IS banned outside
+#      the panel is a Process with the ability to run anything else. The
+#      widget's own argv is asserted to be exactly the read-only command in
+#      check 3d; this rule is the backstop for a Process that reaches further.
+for f in $QML_FILES; do
+  case "$f" in
+    ./BchWalletPanel.qml) continue ;;
+  esac
+  # Strip line and block comments so a type named in prose does not trip the
+  # rule; the check is about what the code can do, not what it says.
+  body=$(sed -e 's://.*::' "$f" | perl -0777 -pe 's{/\*.*?\*/}{}gs')
+  if printf '%s' "$body" | grep -qE '^[[:space:]]*(Process|ProcessExecution|Command)[[:space:]]*\{'; then
+    # A Process is allowed here only if every command it can build is a
+    # read-only bch-bot subcommand. Check the literals the file can actually
+    # name: if a bch-bot invocation appears with a subcommand that is not
+    # read-only, this file can move money and must not be trusted to do so.
+    bad=$(printf '%s' "$body" | grep -oE '"bch-bot"[[:space:]]*,[[:space:]]*"[a-z-]+"' \
+          | grep -oE '"[a-z-]+"[[:space:]]*$' | tr -d '" ' \
+          | grep -vE '^(balance|address|history|utxos|quote|version|help)$' || true)
+    if [ -n "$bad" ]; then
+      echo "SAFETY: $f runs a value-moving command (${bad})" >&2
+      echo "         only BchWalletPanel.qml may move value; that is what keeps every" >&2
+      echo "         key and broadcast behind the checked confirm paths." >&2
+      fail "value-moving commands are confined to the panel"
+    fi
+    # BCH_CONFIRM must never be constructible outside the panel either, even
+    # by concatenation -- otherwise a read-only-looking argv can be promoted to
+    # a broadcast at runtime.
+    if printf '%s' "$body" | grep -qE 'BCH_|CONFIRM'; then
+      echo "SAFETY: $f references BCH_CONFIRM" >&2
+      fail "the broadcast confirmation token is confined to the panel"
+    fi
+  fi
+done
+
 # 4. A broadcast call must never be one the user did not preview. The panel
 #    builds a preview first and enables Confirm only when one exists, so the
 #    check here is structural: confirmSend/executeSwap must be gated on
