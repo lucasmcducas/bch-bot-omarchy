@@ -195,6 +195,26 @@ BarWidget {
 
   Component.onCompleted: refresh()
 
+  // ------------------------------------------------------------------- ipc
+  //
+  // Same shape as the first-party handlers (see shell/Ui/Panel.qml:48 and
+  // shell/plugins/agents/Panel.qml:327): expose open/close/toggle over
+  // `qs ipc call bch-wallet-panel toggle`.
+  //
+  // This exists because right-click is the only mouse affordance for the panel,
+  // and a bar widget is otherwise unreachable from a keyboard, a script, or a
+  // keybind. It is the same mechanism `omarchy-menu` uses, so it is the
+  // supported way to drive the panel without a pointer -- including headless,
+  // where no mouse event can be synthesised at all.
+  IpcHandler {
+    target: "bch-wallet-panel"
+
+    function open(): void { root.panelOpen = true }
+    function close(): void { root.panelOpen = false }
+    function toggle(): void { root.panelOpen = !root.panelOpen }
+    function refresh(): void { root.refresh() }
+  }
+
   Timer {
     interval: root.refreshIntervalSec * 1000
     running: true
