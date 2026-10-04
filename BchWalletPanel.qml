@@ -92,6 +92,15 @@ Item {
     function state() {
       return root.view + "|" + root.status + "|" + root.balanceBch
     }
+
+    // Diagnostics: how much stdout did the last command actually deliver?
+    // Needed because a truncated read and an empty read look identical to
+    // every caller -- both produce a JSON.parse failure.
+    function diag() {
+      return "len=" + String(root.lastStdout).length +
+             " head=" + String(root.lastStdout).slice(0, 60) +
+             " tail=" + String(root.lastStdout).slice(-40)
+    }
   }
 
   // send flow
@@ -384,7 +393,11 @@ Item {
   // the moment the market changes, which it does constantly.
   function loadTradable() {
     if (listedTokens.length > 0) return
-    run(["bch-bot", "list-tokens", "--json"], "swap-list")
+    // `--compact` because the pretty-printed form is 134KB of stdout, which
+    // the StdioCollector did not deliver intact -- and a short read parses as
+    // "no market". Fall back to the indented form if an older bch-bot is on
+    // PATH, so the panel works against either.
+    run(["bch-bot", "list-tokens", "--json", "--compact"], "swap-list")
   }
 
   function getQuote() {
@@ -477,7 +490,19 @@ Item {
     if (kind === "swap-list") {
       // The tradable-token list. Never a failure the user caused, so it is
       // reported only when a swap view is actually open and waiting.
-      if (!parsed || !parsed.length) return fail("no tokens have a live Cauldron market")
+      //
+      // This used to say "no tokens have a live Cauldron market" on ANY falsy
+      // result, which is a claim about the world. It fired when the market was
+      // demonstrably live -- 346 tokens, PUSD included, and a working
+      // BCH->pusd quote -- because the 134KB of stdout had not arrived intact.
+      // A router condition must be reported only when the CLI said so.
+      if (!parsed || !parsed.length) {
+        var seen = String(root.lastStdout || "")
+        if (seen === "") return fail("could not read the token list from bch-bot")
+        return fail("token list unreadable (" + seen.length +
+                    " bytes received, " + String(parsed ? parsed.length : 0) +
+                    " parsed) — the market may be fine")
+      }
       listedTokens = parsed
       if (!swapSell) swapSell = "bch"
       return
