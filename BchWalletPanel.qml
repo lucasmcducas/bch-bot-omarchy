@@ -106,24 +106,42 @@ Item {
     }
 
     // Same, written to a file -- `qs ipc call` does not print return values,
-    // so a file is the only way to read a value out of the shell.
+    // so a file is the only way to read a value out of the shell. The FileView
+    // itself lives on the root, not inside this IpcHandler: a handler has no
+    // default property, so a child object here fails the whole panel to load.
     function diagFile() {
       var s = String(root.lastStdout)
-      var line = "view=" + root.view +
-                 " listedTokens=" + root.listedTokens.length +
-                 " len=" + s.length +
-                 " err=" + root.errorMessage + "\\n" +
-                 "head=" + s.slice(0, 40) + "\\n" +
-                 "tail=" + s.slice(-30) + "\\n"
-      diagWriter.text = line
-      diagWriter.open()
-      return "written"
+      root.diagLine = "view=" + root.view +
+                       " listedTokens=" + root.listedTokens.length +
+                       " len=" + s.length +
+                       " err=" + root.errorMessage + "\n" +
+                       "head=" + s.slice(0, 40) + "\n" +
+                       "tail=" + s.slice(-30)
+      root.diagPending = true
+      return "queued"
     }
+  }
 
-    FileView {
-      id: diagWriter
-      path: "/tmp/bch-panel-diag.txt"
-      print: true
+  // Scratch line for diagFile(). The writer is a root child.
+  property string diagLine: ""
+  property bool diagPending: false
+
+  FileView {
+    id: diagWriter
+    path: "/tmp/bch-panel-diag.txt"
+    print: true
+    writeMethods: FileView.Full
+  }
+
+  Timer {
+    interval: 50
+    running: root.diagPending
+    repeat: false
+    onTriggered: {
+      diagWriter.text = root.diagLine
+      diagWriter.open()
+      diagWriter.write()
+      root.diagPending = false
     }
   }
 
