@@ -129,8 +129,11 @@ Item {
   FileView {
     id: diagWriter
     path: "/tmp/bch-panel-diag.txt"
+    // No `writeMethods` property: it does not exist in Quickshell 0.3.1, and
+    // assigning it fails the whole panel to load with "Cannot assign to
+    // non-existent property" -- while the surface error blames BchWalletPanel
+    // being unavailable, 120 lines away.
     print: true
-    writeMethods: FileView.Full
   }
 
   Timer {
