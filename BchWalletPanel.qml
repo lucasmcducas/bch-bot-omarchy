@@ -68,7 +68,12 @@ Item {
   // send flow
   property string sendTo: ""
   property string sendAmount: ""
-  property var sendPreview: null       // the dry-run JSON from `bch-bot send`
+  // The asset being sent: "bch", or a 64-char CashToken category. This is what
+  // makes the send view cover BOTH assets rather than BCH with a token branch
+  // bolted on -- the two differ only in which subcommand runs and in how the
+  // amount is read, so one field and one flow handle both.
+  property string sendAsset: "bch"
+  property var sendPreview: null       // the dry-run JSON from send / send-token
   property bool sendConfirmed: false
 
   // swap flow
@@ -83,6 +88,10 @@ Item {
   // the router.
   property string swapMinOutput: ""
   property var swapQuote: null
+  // Tokens with a live market, from `bch-bot list-tokens`. This is what turns the
+  // swap view from two free-text fields into a picker: a symbol you have to
+  // already know is a symbol you cannot discover, and Cauldron has 346 of them.
+  property var listedTokens: []
 
   // Which flow a running command belongs to, so one Process can serve all of
   // them: balance | address | send-preview | send-confirm | swap-quote |
@@ -101,6 +110,32 @@ Item {
 
   readonly property color fg: foreground
   readonly property color dim: Qt.darker(fg, 1.5)
+
+  // Is the send/swap target a CashToken rather than native BCH?
+  function isToken(cat) { return cat && cat !== "bch" }
+
+  // A short label for a category. 64 hex characters is not a label and it blows
+  // out a narrow bar, so an unknown category is elided, never dropped: a token
+  // the wallet holds must stay visible even when we cannot name it.
+  function tokenLabel(cat) {
+    if (!cat || cat === "bch") return "BCH"
+    for (var i = 0; i < tokens.length; i++) {
+      if (tokens[i].category === cat) return tokens[i].symbol
+    }
+    return String(cat).slice(0, 8) + "\u2026"
+  }
+
+  // The amount hint differs by asset, because the CLI's parsing differs too:
+  // BCH is 8dp, a token is whatever its category declares, and a token amount
+  // given to the BCH path is either rejected or silently misread.
+  function amountPlaceholder() {
+    if (!isToken(sendAsset)) return "Amount (BCH or sats)"
+    for (var i = 0; i < tokens.length; i++) {
+      if (tokens[i].category === sendAsset)
+        return "Amount " + tokens[i].symbol + " (e.g. 0.10)"
+    }
+    return "Amount in base units"
+  }
 
   function reset() {
     view = "home"
@@ -268,13 +303,13 @@ Item {
   function previewSend() {
     if (!sendTo || !sendAmount) return fail("enter a recipient address and an amount")
     sendConfirmed = false
-    run(["bch-bot", "send", sendTo.trim(), sendAmount.trim()], "send-preview")
+    run(sendArgs(false), "send-preview")
   }
 
   // The only place in this plugin that can broadcast, and it does so by
   // invoking the same CLI with the CLI's own gate set. QML cannot skip it.
   function confirmSend() {
-    run(["bch-bot", "send", sendTo.trim(), sendAmount.trim()],
+    run(sendArgs(false),
       "send-confirm", ["BCH_CONFIRM=yes"])
   }
 
@@ -287,6 +322,29 @@ Item {
     var v = swapMinOutput.trim()
     if (v.length === 0) return null
     return v
+  }
+
+  // One command for both assets.
+  //
+  // `bch-bot send` and `bch-bot send-token` take different arguments, and the
+  // token one needs the CATEGORY, not a symbol -- send-token resolves nothing,
+  // so a symbol would be read as a 64-char category and fail with a confusing
+  // decode error rather than "unknown token".
+  function sendArgs(confirm) {
+    var to = sendTo.trim()
+    var amt = sendAmount.trim()
+    if (isToken(sendAsset)) {
+      return ["bch-bot", "send-token", to, sendAsset, amt]
+    }
+    return ["bch-bot", "send", to, amt]
+  }
+
+  // Ask for the tradable list once per visit to the swap view. Cheap, and the
+  // alternative -- a hardcoded list of tokens this wallet can trade -- is wrong
+  // the moment the market changes, which it does constantly.
+  function loadTradable() {
+    if (listedTokens.length > 0) return
+    run(["bch-bot", "list-tokens", "--json"], "swap-list")
   }
 
   function getQuote() {
@@ -374,6 +432,14 @@ Item {
       sendPreview = parsed
       sendConfirmed = true
       loadBalance()
+      return
+    }
+    if (kind === "swap-list") {
+      // The tradable-token list. Never a failure the user caused, so it is
+      // reported only when a swap view is actually open and waiting.
+      if (!parsed || !parsed.length) return fail("no tokens have a live Cauldron market")
+      listedTokens = parsed
+      if (!swapSell) swapSell = "bch"
       return
     }
     if (kind === "swap-quote") {
@@ -636,11 +702,24 @@ Item {
         }
         Button {
           text: "Send"
-          onClicked: { root.view = "send" }
+          onClicked: { root.view = "send"; root.sendPreview = null }
         }
         Button {
           text: "Swap"
-          onClicked: { root.view = "swap"; root.swapSell = "BCH"; root.swapBuy = "pusd" }
+          // The defaults are CATEGORY IDS, not symbols. The chips compare and
+          // cycle by id, and the nav previously set "BCH" -- which no longer
+          // matches the id for native BCH ("bch"), so the chip would have shown
+          // a stale label and the first tap would have jumped somewhere
+          // unrelated. The list load is what lets the buy side default to the
+          // deepest market rather than a name that may not exist.
+          onClicked: {
+            root.view = "swap"
+            root.swapSell = "bch"
+            root.swapBuy = root.listedTokens.length > 0
+              ? root.listedTokens[0].category : ""
+            root.swapQuote = null
+            root.loadTradable()
+          }
         }
       }
     }
@@ -815,7 +894,11 @@ Item {
 
     // ---- swap
     ColumnLayout {
+      // onVisibleChanged rather than onClicked: the swap view is also reachable
+      // by the flow-state back button, and a list loaded only from the nav would
+      // be missing there.
       visible: root.view === "swap"
+      onVisibleChanged: if (visible) root.loadTradable()
       Layout.fillWidth: true
       spacing: Style.space(8)
 
@@ -850,6 +933,99 @@ Item {
             placeholderText: "pusd"
             text: root.swapBuy
             onTextChanged: { root.swapBuy = text; root.swapQuote = null }
+          }
+        }
+      }
+
+      // The tradable list, and chips that cycle through it.
+      //
+      // The two fields above accept a symbol, and a field that accepts a symbol
+      // is only usable by someone who ALREADY KNOWS the symbol. Cauldron lists
+      // 346 tokens with a live market, so the practical result was that the swap
+      // view worked for exactly the two or three names already in the wallet.
+      // `bch-bot list-tokens --json` supplies the rest, and it is the same indexer
+      // call the swap itself makes, so the list cannot disagree with the market.
+      //
+      // Tapping cycles rather than opening a menu. A 346-entry dropdown on a
+      // status-bar panel is worse than unusable; a cycle is two taps to anywhere
+      // and needs no popup, and it can never leave the user holding a pair the
+      // CLI will refuse.
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(6)
+
+        Rectangle {
+          id: sellChip
+          Layout.fillWidth: true
+          Layout.preferredHeight: Style.space(30)
+          radius: Style.space(6)
+          color: Style.colors.surface
+          border.color: Style.colors.border
+
+          Text {
+            anchors.centerIn: parent
+            width: parent.width - Style.space(8)
+            text: "Sell " + root.tokenLabel(root.swapSell)
+            elide: Text.ElideRight
+            horizontalAlignment: Text.AlignHCenter
+            color: root.fg
+            font.pixelSize: Style.font.bodySmall
+            font.family: Style.font.family
+          }
+
+          TapHandler {
+            onTapped: {
+              var symbols = ["bch"]
+              for (var i = 0; i < root.listedTokens.length; i++)
+                symbols.push(root.listedTokens[i].category)
+              var at = symbols.indexOf(root.swapSell)
+              if (at < 0) at = 0
+              var next = symbols[(at + 1) % symbols.length]
+              root.swapSell = next
+              // The two sides must never meet. BCH/BCH is refused outright, and
+              // a token/token pair has no Cauldron pool at all, so an
+              // auto-correct here is what keeps the view from composing a trade
+              // that can only fail.
+              if (next === root.swapBuy) root.swapBuy = "bch"
+              root.swapQuote = null
+            }
+          }
+        }
+
+        Rectangle {
+          id: buyChip
+          Layout.fillWidth: true
+          Layout.preferredHeight: Style.space(30)
+          radius: Style.space(6)
+          color: Style.colors.surface
+          border.color: Style.colors.border
+
+          Text {
+            anchors.centerIn: parent
+            width: parent.width - Style.space(8)
+            text: "Buy " + root.tokenLabel(root.swapBuy)
+            elide: Text.ElideRight
+            horizontalAlignment: Text.AlignHCenter
+            color: root.fg
+            font.pixelSize: Style.font.bodySmall
+            font.family: Style.font.family
+          }
+
+          TapHandler {
+            onTapped: {
+              // TOKENS ONLY, never bch: selling a token for BCH goes through the
+              // sell side, and offering bch here would let the user compose the
+              // BCH/BCH trade the CLI refuses.
+              if (root.listedTokens.length === 0) return
+              var at = -1
+              for (var i = 0; i < root.listedTokens.length; i++) {
+                if (root.listedTokens[i].category === root.swapBuy) { at = i; break }
+              }
+              var next = root.listedTokens[(at + 1) % root.listedTokens.length].category
+              root.swapBuy = next
+              if (next === root.swapSell) root.swapSell = "bch"
+              root.swapQuote = null
+            }
           }
         }
       }

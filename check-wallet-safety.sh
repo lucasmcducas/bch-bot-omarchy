@@ -98,12 +98,30 @@ fi
 #     not in the alpha's scope and must not appear.
 PANEL_CMDS=$(grep -hoE '\[\s*"bch-bot"\s*,\s*"[a-z-]+"' ./BchWalletPanel.qml 2>/dev/null \
              | grep -oE '"[a-z-]+"$' | tr -d '"' | sort -u || true)
+# The alpha surface, widened 2026-10-03 when the alpha's own definition did.
+#
+# The alpha is: see BCH and token holdings, receive either, send either, and swap
+# BCH<->token. `send-token` is the token half of the send the allowlist already
+# permitted -- excluding it produced a panel that DISPLAYED 2.00 ROACH and could
+# only send BCH, which is a wallet that gets the BCH sent by mistake. That is a
+# worse failure than a wider allowlist, so the capability is admitted rather than
+# the display hidden.
+#
+# `list-tokens` is read-only. It calls the same public indexer `swap` already
+# calls, returns no key material and moves nothing, and without it the swap view
+# can only accept a symbol the user already knows -- of 346 tokens with a live
+# market, that is about three names.
+#
+# Still excluded, and the exclusion is the point of the file: `sweep`, `stake`,
+# `add-liquidity`, `wizardconnect` and anything not named here. Those move value
+# through paths with no preview, and an allowlist is only worth having if adding
+# to it is a visible act.
 for cmd in $PANEL_CMDS; do
   case "$cmd" in
-    balance|address|history|utxos|quote|send|swap) ;;
+    balance|address|history|utxos|quote|send|send-token|swap|list-tokens) ;;
     *)
       echo "SAFETY: bch-bot $cmd is not part of the alpha surface" >&2
-      fail "the panel may only use read-only commands plus send and swap"
+      fail "the panel may only use the alpha commands: read-only, send, send-token, swap, list-tokens"
       ;;
   esac
 done
