@@ -97,9 +97,33 @@ Item {
     // Needed because a truncated read and an empty read look identical to
     // every caller -- both produce a JSON.parse failure.
     function diag() {
-      return "len=" + String(root.lastStdout).length +
-             " head=" + String(root.lastStdout).slice(0, 60) +
-             " tail=" + String(root.lastStdout).slice(-40)
+      var s = String(root.lastStdout)
+      return "view=" + root.view +
+             " listedTokens=" + root.listedTokens.length +
+             " len=" + s.length +
+             " head=" + s.slice(0, 40) +
+             " tail=" + s.slice(-30)
+    }
+
+    // Same, written to a file -- `qs ipc call` does not print return values,
+    // so a file is the only way to read a value out of the shell.
+    function diagFile() {
+      var s = String(root.lastStdout)
+      var line = "view=" + root.view +
+                 " listedTokens=" + root.listedTokens.length +
+                 " len=" + s.length +
+                 " err=" + root.errorMessage + "\\n" +
+                 "head=" + s.slice(0, 40) + "\\n" +
+                 "tail=" + s.slice(-30) + "\\n"
+      diagWriter.text = line
+      diagWriter.open()
+      return "written"
+    }
+
+    FileView {
+      id: diagWriter
+      path: "/tmp/bch-panel-diag.txt"
+      print: true
     }
   }
 
