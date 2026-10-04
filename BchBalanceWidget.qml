@@ -208,7 +208,6 @@ BarWidget {
   FileView {
     id: pressLog
     path: "/tmp/bch-press.log"
-    print: true
   }
 
   // ------------------------------------------------------------------- ipc
