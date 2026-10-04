@@ -1374,11 +1374,11 @@ Item {
     // leave it invisible at best.
     color: Color.background
 
-    // Clicking the backdrop dismisses, which is what a popup should do.
-    TapHandler {
-      anchors.fill: parent
-      onTapped: root.closePicker()
-    }
+    // No backdrop-dismiss handler. A TapHandler covers the whole Item it is
+    // declared in, so on this overlay it would sit over the search field and
+    // every list row and swallow their taps -- clicking a token would just close
+    // the picker. Cancel is the explicit way out, and Escape is handled by the
+    // hosting KeyboardPanel.
 
     ColumnLayout {
       anchors.fill: parent
@@ -1466,7 +1466,6 @@ Item {
         }
 
         TapHandler {
-          anchors.fill: parent
           onTapped: root.chooseToken({ category: "bch", symbol: "BCH", name: "Bitcoin Cash" })
         }
       }
@@ -1524,7 +1523,6 @@ Item {
           }
 
           TapHandler {
-            anchors.fill: parent
             onTapped: root.chooseToken(modelData)
           }
         }
