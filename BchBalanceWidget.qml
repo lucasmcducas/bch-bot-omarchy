@@ -186,11 +186,15 @@ BarWidget {
         root.bar.run("omarchy-launch-floating-terminal-with-presentation bch-bot balance")
       return
     }
-    if (pressedButton === Qt.RightButton) {
-      root.panelOpen = !root.panelOpen
-      return
-    }
-    root.refresh()
+    // LEFT click opens the panel, like every other first-party bar widget:
+    // Microphone toggles mute on left, ActiveWindow activates on left, and a
+    // tray widget opens on left. Right click also opens, and middle click
+    // still drops into a terminal.
+    //
+    // This used to be right-click only, with left click doing a refresh. A user
+    // clicking the wallet icon, which is what anyone would do, got a number
+    // change they could not see and no panel. Both buttons open now.
+    root.panelOpen = !root.panelOpen
   }
 
   Component.onCompleted: refresh()
@@ -288,7 +292,15 @@ BarWidget {
       dimmed: root.status !== "ok"
       tooltipText: root.tooltip
 
-      onPressed: root.handlePress
+      // `function (b)` is REQUIRED, not stylistic. BarIconButton emits onPressed
+      // WITH the button, but `onPressed: root.handlePress` passes a bare function
+      // reference, so QML calls it with no arguments and `pressedButton` is
+      // always undefined. Every branch then failed silently -- a user clicking
+      // the wallet got nothing at all, with no error anywhere. The first-party
+      // widgets all use the lambda form (Microphone.qml:45). This was invisible
+      // to me because I had been driving the panel over IPC, which bypasses the
+      // click path entirely.
+      onPressed: function (b) { root.handlePress(b) }
     }
 
     // Eight decimals is a wallet address, not a glanceable figure; truncating
@@ -318,6 +330,6 @@ BarWidget {
     dimmed: root.status !== "ok"
     tooltipText: root.tooltip
 
-    onPressed: root.handlePress
+    onPressed: function (b) { root.handlePress(b) }
   }
 }

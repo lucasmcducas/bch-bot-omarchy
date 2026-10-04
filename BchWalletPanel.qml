@@ -86,6 +86,16 @@ Item {
     function receive() { root.view = "receive" }
     function swap() { root.view = "swap" }
 
+    // Drive the picker without a mouse. Same reasoning as open/close above: a
+    // control reachable only by tapping is a control that cannot be exercised
+    // on this machine, and a picker that has never been opened is a picker whose
+    // search path has never run.
+    function openPicker() { root.openPicker("buy") }
+    function searchTokens() { root.searchTokens("ROACH") }
+    function chooseFirst() {
+      if (root.pickerResults.length > 0) root.chooseToken(root.pickerResults[0])
+    }
+
     // Report state, so a caller can assert on it instead of on a screenshot.
     // QML has no return-type syntax on functions -- `function state(): string`
     // is a parse error, and it took the whole panel down with it.
@@ -118,6 +128,18 @@ Item {
   property string swapSell: ""
   property string swapBuy: ""
   property string swapAmount: ""
+  // The token picker. `pickerFor` is "sell" or "buy" while open, "" when closed.
+  // `pickerQuery` is what the user has typed; results come back from
+  // `bch-bot list-tokens --search`, so a token outside the top N by liquidity is
+  // findable rather than merely present. Cycling a chip through 346 tokens is
+  // not a picker.
+  property string pickerFor: ""
+  property string pickerQuery: ""
+  property var pickerResults: []
+  property string pickerStatus: "idle"   // idle | searching | ready | empty | error
+  // Results to show when the field is empty: the deepest markets first, which
+  // is the useful default and the same order the CLI already sorts by.
+  readonly property int pickerDefaultLimit: 20
   // The minimum acceptable output, in the BUY asset's base units (or a decimal
   // amount the CLI converts). Empty means no floor, which is the router's
   // default and is NOT safe: the router is documented as beta, and a quote can
@@ -400,6 +422,56 @@ Item {
     run(["bch-bot", "list-tokens", "--json", "--compact"], "swap-list")
   }
 
+  // Run a token search for the picker. The query goes to the CLI rather than
+  // being filtered client-side, because the panel deliberately does not hold all
+  // 346 tokens -- it holds the top 20 and asks the CLI for anything else. That
+  // is what makes an unlisted token reachable.
+  //
+  // An empty query is the default view: the deepest markets, capped. It is not a
+  // "no results" case, and must not be sent as `--search ""`.
+  function searchTokens(query) {
+    pickerQuery = query
+    var args = ["bch-bot", "list-tokens", "--json", "--compact"]
+    if (query === "") {
+      args.push("--limit", String(pickerDefaultLimit))
+    } else {
+      args.push("--search", query, "--limit", "40")
+    }
+    pickerStatus = "searching"
+    run(args, "token-search")
+  }
+
+  function openPicker(which) {
+    pickerFor = which
+    pickerQuery = ""
+    searchTokens("")
+  }
+
+  function closePicker() {
+    pickerFor = ""
+    pickerQuery = ""
+    pickerResults = []
+    pickerStatus = "idle"
+  }
+
+  // Choose a token for whichever side the picker was opened on, then close.
+  // BCH is offered on the sell side only, because every Cauldron pool pairs a
+  // token with BCH -- a token/token trade has no pool, and the CLI refuses it.
+  function chooseToken(entry) {
+    if (!entry || !entry.category) return
+    if (pickerFor === "sell") {
+      swapSell = entry.category
+      // The two sides must never meet: the CLI refuses BCH/BCH and a token/token
+      // pair, and the view should not let it be composed.
+      if (entry.category === swapBuy) swapBuy = "bch"
+    } else if (pickerFor === "buy") {
+      if (entry.category === swapSell) return
+      swapBuy = entry.category
+    }
+    swapQuote = null
+    closePicker()
+  }
+
   function getQuote() {
     if (!swapSell || !swapBuy || !swapAmount)
       return fail("enter the asset to sell, the asset to buy, and an amount")
@@ -487,9 +559,20 @@ Item {
       loadBalance()
       return
     }
+    if (kind === "token-search") {
+      // A search with no hits is a normal answer, not a failure: the user typed
+      // something no token is called. Only a genuinely unreadable response is
+      // an error, and saying so must not become a claim about the market.
+      var got = String(root.lastStdout || "")
+      if (!parsed) {
+        pickerStatus = "error"
+        return
+      }
+      pickerResults = parsed
+      pickerStatus = parsed.length === 0 ? "empty" : "ready"
+      return
+    }
     if (kind === "swap-list") {
-      // The tradable-token list. Never a failure the user caused, so it is
-      // reported only when a swap view is actually open and waiting.
       //
       // This used to say "no tokens have a live Cauldron market" on ANY falsy
       // result, which is a claim about the world. It fired when the market was
@@ -1099,21 +1182,10 @@ Item {
           }
 
           TapHandler {
-            onTapped: {
-              var symbols = ["bch"]
-              for (var i = 0; i < root.listedTokens.length; i++)
-                symbols.push(root.listedTokens[i].category)
-              var at = symbols.indexOf(root.swapSell)
-              if (at < 0) at = 0
-              var next = symbols[(at + 1) % symbols.length]
-              root.swapSell = next
-              // The two sides must never meet. BCH/BCH is refused outright, and
-              // a token/token pair has no Cauldron pool at all, so an
-              // auto-correct here is what keeps the view from composing a trade
-              // that can only fail.
-              if (next === root.swapBuy) root.swapBuy = "bch"
-              root.swapQuote = null
-            }
+            // Opens the searchable picker. It used to cycle to the next token on
+            // each tap, which is unusable at 346 tokens and unreachable for the
+            // 326 outside the default list.
+            onTapped: root.openPicker("sell")
           }
         }
 
@@ -1140,20 +1212,11 @@ Item {
           }
 
           TapHandler {
-            onTapped: {
-              // TOKENS ONLY, never bch: selling a token for BCH goes through the
-              // sell side, and offering bch here would let the user compose the
-              // BCH/BCH trade the CLI refuses.
-              if (root.listedTokens.length === 0) return
-              var at = -1
-              for (var i = 0; i < root.listedTokens.length; i++) {
-                if (root.listedTokens[i].category === root.swapBuy) { at = i; break }
-              }
-              var next = root.listedTokens[(at + 1) % root.listedTokens.length].category
-              root.swapBuy = next
-              if (next === root.swapSell) root.swapSell = "bch"
-              root.swapQuote = null
-            }
+            // Opens the searchable picker, which offers tokens only and never
+            // BCH: selling a token for BCH goes through the sell side, and
+            // offering bch here would let the user compose the BCH/BCH trade
+            // the CLI refuses. chooseToken enforces that.
+            onTapped: root.openPicker("buy")
           }
         }
       }
@@ -1291,4 +1354,187 @@ Item {
   }
 
   Component.onCompleted: loadBalance()
+
+  // ---------------------------------------------------------- token picker
+  //
+  // An overlay inside the panel, shown while pickerFor is "sell" or "buy". It
+  // replaces the old tap-to-cycle chip behaviour: cycling through 346 tokens one
+  // tap at a time is not a picker, and it made every token outside the default
+  // top 20 unreachable.
+  //
+  // Search runs against the CLI, not against a locally held list, because the
+  // panel intentionally does not hold all 346. That is what makes a token the
+  // user has heard of but has never seen in a top-20 list findable.
+  Rectangle {
+    id: picker
+    anchors.fill: parent
+    visible: root.pickerFor !== ""
+    // Color.background, the same token the panel's own surface resolves through.
+    // There is no `root.bg` -- an undefined property on an opaque overlay would
+    // leave it invisible at best.
+    color: Color.background
+
+    // Clicking the backdrop dismisses, which is what a popup should do.
+    TapHandler {
+      anchors.fill: parent
+      onTapped: root.closePicker()
+    }
+
+    ColumnLayout {
+      anchors.fill: parent
+      anchors.margins: Style.space(12)
+      spacing: Style.space(8)
+
+      Text {
+        text: root.pickerFor === "sell" ? "Sell which token?" : "Buy which token?"
+        color: root.fg
+        font.pixelSize: Style.font.body
+        font.family: Style.font.family
+      }
+
+      TextField {
+        Layout.fillWidth: true
+        // The field shows the query, not the selection, so typing is one
+        // uninterrupted action. Selecting a row closes the picker and returns to
+        // the trade form.
+        placeholderText: root.pickerFor === "sell"
+          ? "Search tokens — name, ticker, or category"
+          : "Search tokens — name, ticker, or category"
+        text: root.pickerQuery
+        onTextChanged: root.searchTokens(text)
+      }
+
+      Text {
+        Layout.fillWidth: true
+        visible: root.pickerQuery === ""
+        text: "Deepest markets first. Search to reach any other Cauldron token."
+        color: root.dim
+        font.pixelSize: Style.font.bodySmall
+        font.family: Style.font.family
+        wrapMode: Text.WordWrap
+      }
+
+      Text {
+        Layout.fillWidth: true
+        visible: root.pickerStatus === "searching"
+        text: "Searching…"
+        color: root.dim
+        font.pixelSize: Style.font.bodySmall
+        font.family: Style.font.family
+      }
+
+      // No results is an answer, not an error: the user typed something no token
+      // is called. Saying "no market" here would repeat the bug this panel
+      // already had.
+      Text {
+        Layout.fillWidth: true
+        visible: root.pickerStatus === "empty"
+        text: "No token matches \"" + root.pickerQuery + "\"."
+        color: root.dim
+        font.pixelSize: Style.font.bodySmall
+        font.family: Style.font.family
+        wrapMode: Text.WordWrap
+      }
+
+      Text {
+        Layout.fillWidth: true
+        visible: root.pickerStatus === "error"
+        text: "Could not read the token list from bch-bot."
+        color: root.dim
+        font.pixelSize: Style.font.bodySmall
+        font.family: Style.font.family
+        wrapMode: Text.WordWrap
+      }
+
+      // BCH on the sell side only. Every Cauldron pool pairs a token with BCH, so
+      // a token/token trade has no pool and the CLI refuses it; offering BCH on
+      // the buy side would let the user compose the BCH/BCH trade.
+      Rectangle {
+        Layout.fillWidth: true
+        Layout.preferredHeight: Style.space(34)
+        visible: root.pickerFor === "sell"
+        radius: Style.space(6)
+        color: "transparent"
+        border.color: root.dim
+
+        Text {
+          anchors.centerIn: parent
+          text: "BCH"
+          color: root.fg
+          font.pixelSize: Style.font.bodySmall
+          font.family: Style.font.family
+        }
+
+        TapHandler {
+          anchors.fill: parent
+          onTapped: root.chooseToken({ category: "bch", symbol: "BCH", name: "Bitcoin Cash" })
+        }
+      }
+
+      ListView {
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        clip: true
+        spacing: Style.space(4)
+        model: root.pickerResults
+
+        delegate: Rectangle {
+          required property var modelData
+          width: ListView.view.width
+          height: Style.space(34)
+          radius: Style.space(6)
+          color: "transparent"
+          border.color: root.dim
+
+          // Ticker and name on the left, depth on the right: enough to recognise
+          // a token and see whether it is worth trading.
+          Text {
+            anchors.left: parent.left
+            anchors.leftMargin: Style.space(8)
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width * 0.45
+            text: String(modelData.symbol || "?")
+            elide: Text.ElideRight
+            color: root.fg
+            font.pixelSize: Style.font.bodySmall
+            font.family: Style.font.family
+            font.weight: Font.DemiBold
+          }
+
+          Text {
+            anchors.left: parent.left
+            anchors.leftMargin: parent.width * 0.45
+            anchors.verticalCenter: parent.verticalCenter
+            width: parent.width * 0.35
+            text: String(modelData.name || "")
+            elide: Text.ElideRight
+            color: root.dim
+            font.pixelSize: Style.font.bodySmall
+            font.family: Style.font.family
+          }
+
+          Text {
+            anchors.right: parent.right
+            anchors.rightMargin: Style.space(8)
+            anchors.verticalCenter: parent.verticalCenter
+            text: modelData.tvl_display ? String(modelData.tvl_display) : ""
+            color: root.dim
+            font.pixelSize: Style.font.bodySmall
+            font.family: Style.font.family
+          }
+
+          TapHandler {
+            anchors.fill: parent
+            onTapped: root.chooseToken(modelData)
+          }
+        }
+      }
+
+      Button {
+        Layout.fillWidth: true
+        text: "Cancel"
+        onClicked: root.closePicker()
+      }
+    }
+  }
 }
