@@ -65,6 +65,33 @@ Item {
   property string receiveAddress: ""
   property string receiveNetwork: ""
 
+  // -------------------------------------------------------------------- ipc
+  //
+  // The panel's three actions are pointer-only, so a headless or keyboard-driven
+  // session can open the panel but can never reach send/receive/swap. Exposing
+  // the view lets those flows be driven and verified without a mouse, and it is
+  // a real affordance rather than a test hook: the same IpcHandler pattern the
+  // first-party panels use (shell/Ui/Panel.qml:48).
+  IpcHandler {
+    target: "bch-wallet-view"
+
+    // Switch view. `name` arrives as a string, so validate it rather than
+    // trusting a caller with the only four legal values.
+    function show(name: string): void {
+      if (name === "home" || name === "send" || name === "receive" || name === "swap")
+        root.view = name
+    }
+    function home(): void { root.view = "home" }
+    function send(): void { root.view = "send" }
+    function receive(): void { root.view = "receive" }
+    function swap(): void { root.view = "swap" }
+
+    // Report state, so a caller can assert on it instead of on a screenshot.
+    function state(): string {
+      return root.view .. "|" .. root.status .. "|" .. root.balanceBch
+    }
+  }
+
   // send flow
   property string sendTo: ""
   property string sendAmount: ""
