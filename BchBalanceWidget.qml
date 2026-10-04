@@ -181,11 +181,6 @@ BarWidget {
   property bool panelOpen: false
 
   function handlePress(pressedButton) {
-    // TEMPORARY diagnostic: log every press so a click that never arrives is
-    // distinguishable from one that arrives and does the wrong thing. Remove.
-    pressLog.text = "press button=" + String(pressedButton) + " at " + new Date().toISOString() + "\n"
-    pressLog.open()
-    pressLog.write()
     if (pressedButton === Qt.MiddleButton) {
       if (root.bar)
         root.bar.run("omarchy-launch-floating-terminal-with-presentation bch-bot balance")
@@ -203,12 +198,6 @@ BarWidget {
   }
 
   Component.onCompleted: refresh()
-
-  // TEMPORARY: see handlePress. Remove with the log line above.
-  FileView {
-    id: pressLog
-    path: "/tmp/bch-press.log"
-  }
 
   // ------------------------------------------------------------------- ipc
   //
@@ -228,6 +217,7 @@ BarWidget {
     function close() { root.panelOpen = false }
     function toggle() { root.panelOpen = !root.panelOpen }
     function refresh() { root.refresh() }
+
   }
 
   Timer {
