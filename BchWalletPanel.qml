@@ -77,18 +77,20 @@ Item {
 
     // Switch view. `name` arrives as a string, so validate it rather than
     // trusting a caller with the only four legal values.
-    function show(name: string): void {
+    function show(name: string) {
       if (name === "home" || name === "send" || name === "receive" || name === "swap")
         root.view = name
     }
-    function home(): void { root.view = "home" }
-    function send(): void { root.view = "send" }
-    function receive(): void { root.view = "receive" }
-    function swap(): void { root.view = "swap" }
+    function home() { root.view = "home" }
+    function send() { root.view = "send" }
+    function receive() { root.view = "receive" }
+    function swap() { root.view = "swap" }
 
     // Report state, so a caller can assert on it instead of on a screenshot.
-    function state(): string {
-      return root.view .. "|" .. root.status .. "|" .. root.balanceBch
+    // QML has no return-type syntax on functions -- `function state(): string`
+    // is a parse error, and it took the whole panel down with it.
+    function state() {
+      return root.view + "|" + root.status + "|" + root.balanceBch
     }
   }
 

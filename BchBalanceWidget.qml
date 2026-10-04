@@ -209,10 +209,10 @@ BarWidget {
   IpcHandler {
     target: "bch-wallet-panel"
 
-    function open(): void { root.panelOpen = true }
-    function close(): void { root.panelOpen = false }
-    function toggle(): void { root.panelOpen = !root.panelOpen }
-    function refresh(): void { root.refresh() }
+    function open() { root.panelOpen = true }
+    function close() { root.panelOpen = false }
+    function toggle() { root.panelOpen = !root.panelOpen }
+    function refresh() { root.refresh() }
   }
 
   Timer {
