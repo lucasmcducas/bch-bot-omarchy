@@ -128,6 +128,17 @@ Item {
   // The amount hint differs by asset, because the CLI's parsing differs too:
   // BCH is 8dp, a token is whatever its category declares, and a token amount
   // given to the BCH path is either rejected or silently misread.
+  // The assets the send view offers: native BCH plus every token category the
+  // wallet HOLDS. Not every token that exists -- offering 346 would be a list
+  // nobody scans, and the point of a send view is to send money you have.
+  function sendAssetChoices() {
+    var out = [{ category: "bch", label: "BCH" }]
+    for (var i = 0; i < tokens.length; i++) {
+      out.push({ category: tokens[i].category, label: tokens[i].symbol })
+    }
+    return out
+  }
+
   function amountPlaceholder() {
     if (!isToken(sendAsset)) return "Amount (BCH or sats)"
     for (var i = 0; i < tokens.length; i++) {
@@ -790,6 +801,63 @@ Item {
       Layout.fillWidth: true
       spacing: Style.space(8)
 
+      // WHAT IS BEING SENT: BCH, or one of the token categories the wallet
+      // holds. Without this a token send is unreachable from the panel, and a
+      // wallet that displays 2.00 ROACH but can only send BCH is a wallet that
+      // gets the BCH sent by mistake. The asset sits next to the amount because
+      // an amount with no asset is meaningless: 0.10 is ten sats of BCH, or a
+      // tenth of a token.
+      Text {
+        text: "Asset"
+        color: root.dim
+        font.pixelSize: Style.font.bodySmall
+      }
+
+      RowLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(6)
+
+        Repeater {
+          model: root.sendAssetChoices()
+
+          Rectangle {
+            id: assetChip
+            required property var modelData
+            Layout.fillWidth: true
+            Layout.preferredHeight: Style.space(30)
+            radius: Style.space(6)
+            // root.fg / root.dim, and never a Style palette key. The real qs.Ui
+            // is not installed on this machine, so its colour names are
+            // unknown, and an unresolved colour does not fall back -- it FAILS,
+            // which renders the chip invisible. root.fg and root.dim derive from
+            // the injected foreground colour and are what every pre-existing row
+            // in this panel uses, so they are the keys proven to render.
+            color: root.sendAsset === assetChip.modelData.category
+              ? root.dim : "transparent"
+            border.color: root.sendAsset === assetChip.modelData.category
+              ? root.fg : root.dim
+
+            Text {
+              anchors.centerIn: parent
+              width: parent.width - Style.space(8)
+              text: assetChip.modelData.label
+              elide: Text.ElideRight
+              horizontalAlignment: Text.AlignHCenter
+              color: root.dim
+              font.pixelSize: Style.font.bodySmall
+              font.family: Style.font.family
+            }
+
+            TapHandler {
+              onTapped: {
+                root.sendAsset = assetChip.modelData.category
+                root.sendPreview = null
+              }
+            }
+          }
+        }
+      }
+
       Text {
         text: "Recipient"
         color: root.dim
@@ -959,8 +1027,11 @@ Item {
           Layout.fillWidth: true
           Layout.preferredHeight: Style.space(30)
           radius: Style.space(6)
-          color: Style.colors.surface
-          border.color: Style.colors.border
+          // root.dim rather than a Style palette key -- see the send chips. An
+          // unknown colour name fails rather than falling back, so an unverified
+          // key risks an invisible control.
+          color: "transparent"
+          border.color: root.dim
 
           Text {
             anchors.centerIn: parent
@@ -997,8 +1068,11 @@ Item {
           Layout.fillWidth: true
           Layout.preferredHeight: Style.space(30)
           radius: Style.space(6)
-          color: Style.colors.surface
-          border.color: Style.colors.border
+          // root.dim rather than a Style palette key -- see the send chips. An
+          // unknown colour name fails rather than falling back, so an unverified
+          // key risks an invisible control.
+          color: "transparent"
+          border.color: root.dim
 
           Text {
             anchors.centerIn: parent
