@@ -68,6 +68,12 @@ Item {
   property string receiveQr: ""
   // Where makeQr last asked qrencode to write. Set on success only.
   property string qrTarget: ""
+  // A run() that arrived while the Process was busy. `null` means "nothing
+  // waiting". Kept to a single slot: a second request overwrites the first
+  // rather than growing an unbounded backlog of commands the user never asked
+  // for twice, and a foreground request is never overwritten by a background
+  // one -- see the guard in onExited.
+  property var queuedRun: null
   property string receiveNetwork: ""
 
   // -------------------------------------------------------------------- ipc
@@ -260,8 +266,10 @@ Item {
   Process {
     id: copyProcess
     running: false
-    command: ["wl-copy", "--foreground"]
-    stdinEnabled: true
+    // Set per-invocation in copyAddress(); the address is the argument.
+    command: []
+    // No stdinEnabled: the address travels as an argv element, so there is no
+    // pipe to open and no window in which a write could be lost.
 
     stdout: StdioCollector {
       waitForEnd: true
@@ -321,15 +329,28 @@ Item {
     if (!root.receiveAddress) return
     root.errorMessage = ""
     if (copyProcess.running) return
-    // Quickshell's Process has no stdin pipe: `write()` is the only way to hand
-    // it data. Writing immediately can race the child not having opened stdin
-    // yet, so the write is deferred one event-loop turn. If the write is lost
-    // the clipboard ends up empty and wl-copy still exits 0, which is why the
-    // success state is short-lived rather than sticky.
+    // The address goes on the COMMAND LINE, not down a pipe.
+    //
+    // The earlier version started `wl-copy --foreground` and then wrote the
+    // address to its stdin one event-loop turn later, because Quickshell's
+    // Process has no stdin pipe until the child has opened one and writing too
+    // early drops the bytes. That write never landed: the button left the
+    // clipboard untouched while wl-copy sat there owning nothing, and the
+    // "Copied" confirmation was the only thing that changed. Verified by
+    // clicking the real button and reading the clipboard back with wl-paste.
+    //
+    // wl-copy accepts the text as an argument, so there is no window to lose it
+    // in. The address is a CashAddr, not a shell string: it is passed as one
+    // argv element and never concatenated into a command line, so it cannot be
+    // reinterpreted as a flag or a command.
+    //
+    // --foreground is deliberate. Without it wl-copy forks and the Quickshell
+    // Process sees the parent exit 0 immediately, which would report a copy
+    // success that had not happened yet. Staying in the foreground means
+    // onExited fires when the clipboard is genuinely released.
+    copyProcess.command = ["wl-copy", "--foreground", "--type", "text/plain",
+                           root.receiveAddress]
     copyProcess.running = true
-    Qt.callLater(function () {
-      if (copyProcess.running) copyProcess.write(root.receiveAddress)
-    })
   }
 
   function refreshBalances() {
@@ -371,7 +392,25 @@ Item {
   // the Process would need a property the type does not have, and a plain
   // string cannot say which view it belongs to.
   function run(cmd, kind, env, silent) {
-    if (status === "busy") return
+    // A user-initiated run must never be silently dropped.
+    //
+    // This used to read `if (status === "busy") return`, which threw away the
+    // request outright. Clicking Receive while a background balance refresh was
+    // in flight -- the normal state, because the panel refreshes on a timer and
+    // on every open -- meant the address command was never dispatched, and since
+    // nothing retried it the view sat on "deriving…" forever with no error. It
+    // reproduced on roughly one click in three. Verified by instrumenting the
+    // bch-bot shim to log every invocation: the log was empty for the clicks
+    // that "failed", which is how this was pinned down.
+    //
+    // queueing the request is the correct behaviour for two reasons. The user
+    // asked for it, so dropping it is the one option that is never right; and
+    // the Process can only run one command at a time, so the queue is how the
+    // second one waits rather than colliding.
+    if (process.running) {
+      if (root.queuedRun === null) root.queuedRun = { cmd: cmd, kind: kind, env: env, silent: silent }
+      return
+    }
     pendingSilent = silent === true
     // A background run leaves `status` alone so the current view is untouched
     // and the buttons stay live. A foreground run shows "busy" as before.
@@ -708,7 +747,29 @@ Item {
       root.applyResult(kind, root.lastStdout)
       root.lastStdout = ""
       if (root.status === "busy") root.status = "ok"
+      root.drainQueue()
     }
+
+    // A failure returns early above, so the queue is drained from a handler as
+    // well -- otherwise one failed background refresh strands every run() that
+    // was waiting behind it, which is the same stuck-forever symptom in a
+    // harder form. run() is called here rather than duplicated because the
+    // queue is cleared first: run() would see `process.running` is still true
+    // (this signal fires before the Process is marked stopped) and re-queue
+    // the work into the slot we just emptied.
+    onRunningChanged: {
+      if (!process.running) root.drainQueue()
+    }
+  }
+
+  function drainQueue() {
+    if (root.queuedRun === null) return
+    var next = root.queuedRun
+    root.queuedRun = null
+    // A waiting foreground request outranks a waiting background refresh: the
+    // user asked for the first one, and the refresh is best-effort.
+    if (next.silent === true && root.status === "busy") return
+    root.run(next.cmd, next.kind, next.env, next.silent)
   }
 
   // ------------------------------------------------------------------ layout
