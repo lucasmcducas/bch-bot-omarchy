@@ -49,7 +49,27 @@ Every PR must:
 1. **Pass `audit-public.sh`** — no mainnet wallet paths, no specific dollar figures, no third-party destinations.
 2. **Reference an issue** — open or closed. PRs without a linked issue get rejected.
 3. **Have a clear title** — `[Plugin]: <one-line summary>` (matches the issue template).
-4. **Have tested the change** — either with `npm test` (if JS changes) or by running in Omarchy 4.0 with a screenshot.
+4. **Have tested the change** — either with `npm test` (if JS changes) or by
+   driving the change on a real Omarchy 4.0 install.
+
+   A screenshot alone is **not** sufficient evidence, and the reason is specific
+   enough to be worth stating: the receive flow once passed every visual check
+   while being completely broken in two independent ways — the address never
+   resolved on roughly one click in three, and Copy address put nothing on the
+   clipboard. Both looked correct on screen.
+
+   For anything that moves a value between the panel and the world, assert the
+   **outcome**, not the appearance:
+
+   | change | what to assert |
+   |---|---|
+   | receive / QR | decode the generated code and compare it to the address shown — they must be byte-identical |
+   | copy / clipboard | clear the clipboard first (`wl-paste` → "Nothing is copied"), click, then read it back with `wl-paste` |
+   | any command dispatch | log the invocation; an empty log means the command never ran, which looks identical to a parser failure |
+   | send / swap | state the amounts, and say explicitly which part is unverified |
+
+   See §"The QML/CLI boundary" below and the wiki's
+   `references/receiving-an-address.md`.
 5. **Not introduce marketplace-security-baseline violations** — see SECURITY.md.
 6. **Not change the plugin ID or namespace** — the public plugin ID is `io.github.lucasmcducas.bch-wallet` and stays that way. Different IDs require a new repo.
 

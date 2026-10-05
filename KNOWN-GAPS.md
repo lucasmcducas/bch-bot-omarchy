@@ -33,13 +33,22 @@ Two candidate fixes — pick one, do not do both:
 A is safer and smaller. B is the honest UX if the user is told the worst price
 they will accept. The real fix is A with B's disclosure.
 
-## 2. Receive address is generated on demand, not cached
+## 2. Receive address is generated on demand, not cached — DECIDED, kept open
 
-`loadAddress()` calls `bch-bot address --json` each time the panel opens. The
+`loadAddress()` calls `bch-bot address --json` each time Receive is opened. The
 CLI derives a fresh address per call from the index. That is *correct* for a
 non-receiving wallet (each receive is a fresh UTXO, so address reuse cannot link
-them) but it means the panel does not show a stable address to check against a
-sender's expectation. Worth a decision: fresh-per-open, or a rotating set.
+them) and it is now the intended behaviour rather than an open question, because
+the receive view is built around it: the QR, the clipboard and the displayed text
+are all generated from whichever address the current call returned, and the
+verification asserts all three agree with each other rather than with a
+remembered value.
+
+What remains is the UX cost, and it is a documentation task rather than a bug:
+there is **no stable address**, so a user cannot be told "our address is X" and
+have it stay true. If a stable address is ever wanted, the correct shape is a
+**rotating set** disclosed as such — not a single cached address, which would
+regress the unlinkability the fresh derivation provides.
 
 ## 3. Send flow re-verifies nothing between preview and broadcast
 
